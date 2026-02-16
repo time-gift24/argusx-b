@@ -189,3 +189,73 @@ pub struct Delta {
     pub content: Option<String>,
     pub reasoning_content: Option<String>,
 }
+
+// Builder methods
+
+impl ChatRequest {
+    pub fn new(model: impl Into<String>, messages: Vec<Message>) -> Self {
+        Self {
+            model: model.into(),
+            messages,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            stream: false,
+            tools: None,
+            tool_choice: None,
+            thinking: None,
+        }
+    }
+
+    pub fn temperature(mut self, value: f32) -> Self {
+        self.temperature = Some(value);
+        self
+    }
+
+    pub fn max_tokens(mut self, value: i32) -> Self {
+        self.max_tokens = Some(value);
+        self
+    }
+
+    pub fn stream(mut self) -> Self {
+        self.stream = true;
+        self
+    }
+
+    pub fn tools(mut self, tools: Vec<Tool>) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+}
+
+impl Message {
+    pub fn user(content: impl Into<Content>) -> Self {
+        Self {
+            role: Role::User,
+            content: content.into(),
+            reasoning_content: None,
+        }
+    }
+
+    pub fn assistant(content: impl Into<Content>) -> Self {
+        Self {
+            role: Role::Assistant,
+            content: content.into(),
+            reasoning_content: None,
+        }
+    }
+
+    pub fn system(content: impl Into<Content>) -> Self {
+        Self {
+            role: Role::System,
+            content: content.into(),
+            reasoning_content: None,
+        }
+    }
+}
+
+impl From<String> for Content {
+    fn from(s: String) -> Self {
+        Content::Text(s)
+    }
+}
