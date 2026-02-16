@@ -6,6 +6,8 @@ mod sqlite;
 
 use std::sync::Arc;
 
+use argusx_common::config::Settings;
+
 pub use domain::*;
 pub use error::{PromptLabError, Result};
 pub use service::{AiLogService, CheckResultService, ChecklistService, GoldenSetService};
@@ -23,8 +25,8 @@ pub struct PromptLab {
 }
 
 impl PromptLab {
-    pub async fn new(config: DbConfig) -> Result<Self> {
-        let pool = sqlite::connect(&config).await?;
+    pub async fn new(settings: Settings) -> Result<Self> {
+        let pool = sqlite::connect(&settings.database).await?;
         sqlite::run_migrations(&pool).await?;
 
         let repo = Arc::new(PromptLabRepository::new(pool));

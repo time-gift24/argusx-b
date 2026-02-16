@@ -1,13 +1,14 @@
+use argusx_common::config::Settings;
 use prompt_lab_core::{
     AiExecutionLogFilter, AppendAiExecutionLogInput, BindGoldenSetItemInput, ChecklistFilter,
-    ChecklistStatus, CreateChecklistItemInput, DbConfig, ExecStatus, PromptLab, SourceType,
-    TargetLevel, UpdateChecklistItemInput, UpsertCheckResultInput,
+    ChecklistStatus, CreateChecklistItemInput, ExecStatus, PromptLab, SourceType, TargetLevel,
+    UpdateChecklistItemInput, UpsertCheckResultInput,
 };
 use serde_json::json;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static DB_COUNTER: AtomicU64 = AtomicU64::new(0);
-fn db_config_for_temp() -> DbConfig {
+fn settings_for_temp() -> Settings {
     let seq = DB_COUNTER.fetch_add(1, Ordering::Relaxed);
     let unique = format!(
         "prompt_lab_test_{}_{}_{}_{}.db",
@@ -20,16 +21,20 @@ fn db_config_for_temp() -> DbConfig {
             .as_nanos()
     );
     let path = std::env::temp_dir().join(unique);
-    DbConfig {
-        db_path: path,
-        busy_timeout_ms: 5_000,
+    Settings {
+        database: argusx_common::config::DatabaseConfig {
+            path: path.to_string_lossy().to_string(),
+            busy_timeout_ms: 5_000,
+            max_connections: 5,
+        },
+        logging: argusx_common::config::LoggingConfig::default(),
     }
 }
 
 #[tokio::test]
 async fn checklist_create_update_and_list_roundtrip() {
-    let config = db_config_for_temp();
-    let lab = PromptLab::new(config).await.expect("init prompt lab");
+    let settings = settings_for_temp();
+    let lab = PromptLab::new(settings).await.expect("init prompt lab");
 
     let created = lab
         .checklist_service()
@@ -81,8 +86,8 @@ async fn checklist_create_update_and_list_roundtrip() {
 
 #[tokio::test]
 async fn checklist_create_rejects_invalid_json_schema() {
-    let config = db_config_for_temp();
-    let lab = PromptLab::new(config).await.expect("init prompt lab");
+    let settings = settings_for_temp();
+    let lab = PromptLab::new(settings).await.expect("init prompt lab");
 
     let result = lab
         .checklist_service()
@@ -102,8 +107,8 @@ async fn checklist_create_rejects_invalid_json_schema() {
 
 #[tokio::test]
 async fn golden_set_bind_enforces_foreign_keys() {
-    let config = db_config_for_temp();
-    let lab = PromptLab::new(config).await.expect("init prompt lab");
+    let settings = settings_for_temp();
+    let lab = PromptLab::new(settings).await.expect("init prompt lab");
 
     let checklist = lab
         .checklist_service()
@@ -159,8 +164,8 @@ async fn golden_set_bind_enforces_foreign_keys() {
 
 #[tokio::test]
 async fn check_run_and_log_append_roundtrip() {
-    let config = db_config_for_temp();
-    let lab = PromptLab::new(config).await.expect("init prompt lab");
+    let settings = settings_for_temp();
+    let lab = PromptLab::new(settings).await.expect("init prompt lab");
 
     let checklist = lab
         .checklist_service()

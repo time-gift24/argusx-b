@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
+use argusx_common::config::DatabaseConfig;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::SqlitePool;
@@ -10,25 +11,11 @@ use crate::error::Result;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
-#[derive(Debug, Clone)]
-pub struct DbConfig {
-    pub db_path: PathBuf,
-    pub busy_timeout_ms: u64,
-}
+/// Type alias for DatabaseConfig from argusx-common
+pub type DbConfig = DatabaseConfig;
 
-impl Default for DbConfig {
-    fn default() -> Self {
-        Self {
-            db_path: PathBuf::from("/Users/wanyaozhong/projects/argusx/argusx-b/prompt_lab/dev.db"),
-            busy_timeout_ms: 5_000,
-        }
-    }
-}
-
-impl DbConfig {
-    pub fn database_url(&self) -> String {
-        format!("sqlite://{}", self.db_path.display())
-    }
+fn database_url(config: &DatabaseConfig) -> String {
+    format!("sqlite://{}", config.path)
 }
 
 pub async fn ensure_parent_directory(path: &Path) -> Result<()> {
@@ -39,16 +26,17 @@ pub async fn ensure_parent_directory(path: &Path) -> Result<()> {
 }
 
 pub async fn connect(config: &DbConfig) -> Result<SqlitePool> {
-    ensure_parent_directory(&config.db_path).await?;
+    let db_path = PathBuf::from(&config.path);
+    ensure_parent_directory(&db_path).await?;
 
-    let options = SqliteConnectOptions::from_str(&config.database_url())?
+    let options = SqliteConnectOptions::from_str(&database_url(config))?
         .create_if_missing(true)
         .foreign_keys(true)
         .journal_mode(SqliteJournalMode::Wal)
         .busy_timeout(Duration::from_millis(config.busy_timeout_ms));
 
     let pool = SqlitePoolOptions::new()
-        .max_connections(5)
+        .max_connections(config.max_connections)
         .connect_with(options)
         .await?;
 

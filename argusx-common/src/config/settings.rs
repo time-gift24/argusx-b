@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Settings {
     #[serde(default)]
     pub database: DatabaseConfig,
@@ -39,15 +39,6 @@ impl Default for LoggingConfig {
             level: "info".to_string(),
             file: None,
             console: true,
-        }
-    }
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            database: DatabaseConfig::default(),
-            logging: LoggingConfig::default(),
         }
     }
 }

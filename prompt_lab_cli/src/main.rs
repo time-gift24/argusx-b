@@ -1,9 +1,10 @@
+use argusx_common::config::Settings;
 use clap::{Parser, Subcommand, ValueEnum};
 use comfy_table::{presets::UTF8_FULL, Cell, Table};
 use prompt_lab_core::{
     AiExecutionLogFilter, AppendAiExecutionLogInput, BindGoldenSetItemInput, ChecklistFilter,
-    ChecklistStatus, CreateChecklistItemInput, DbConfig, ExecStatus, PromptLab, SourceType,
-    TargetLevel, UpdateChecklistItemInput, UpsertCheckResultInput,
+    ChecklistStatus, CreateChecklistItemInput, ExecStatus, PromptLab, SourceType, TargetLevel,
+    UpdateChecklistItemInput, UpsertCheckResultInput,
 };
 use serde_json::Value;
 use std::path::PathBuf;
@@ -241,11 +242,15 @@ async fn main() {
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    let config = DbConfig {
-        db_path: cli.db,
-        busy_timeout_ms: 5_000,
+    let settings = Settings {
+        database: argusx_common::config::DatabaseConfig {
+            path: cli.db.to_string_lossy().to_string(),
+            busy_timeout_ms: 5_000,
+            max_connections: 5,
+        },
+        logging: argusx_common::config::LoggingConfig::default(),
     };
-    let lab = PromptLab::new(config).await?;
+    let lab = PromptLab::new(settings).await?;
 
     match cli.command {
         Commands::Db { command } => match command {
