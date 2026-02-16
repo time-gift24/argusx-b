@@ -45,10 +45,60 @@ impl BigModelClient {
 
     pub fn chat_stream(
         &self,
-        _request: ChatRequest,
-    ) -> Pin<Box<dyn Stream<Item = Result<ChatResponseChunk>> + Send>> {
-        // TODO: Implement streaming
-        Box::pin(futures::stream::empty())
+        request: ChatRequest,
+    ) -> Pin<Box<dyn Stream<Item = Result<ChatResponseChunk>> + Send + '_>> {
+        let url = format!("{}/v4/chat/completions", self.config.base_url);
+        let api_key = self.config.api_key.clone();
+        let http_client = self.http.clone();
+
+        Box::pin(async_stream::try_stream! {
+            let response = http_client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .json(&request)
+                .send()
+                .await?;
+
+            // Use error_for_status to handle errors - returns Err if status is error
+            let response = match response.error_for_status() {
+                Ok(r) => r,
+                Err(e) => {
+                    // For error responses, we can't stream - just return error
+                    Err(BigModelError::ServerError(format!(
+                        "Stream error: {}",
+                        e
+                    )))?
+                }
+            };
+
+            let mut stream = response.bytes_stream();
+
+            use futures::stream::StreamExt;
+            let mut buffer = String::new();
+
+            while let Some(chunk) = stream.next().await {
+                let bytes: bytes::Bytes = chunk?;
+                if let Ok(text) = String::from_utf8(bytes.to_vec()) {
+                    buffer.push_str(&text);
+
+                    // Parse SSE format
+                    for line in buffer.lines() {
+                        if line.starts_with("data: ") {
+                            let data = &line[6..];
+                            if data == "[DONE]" {
+                                return;
+                            }
+                            if let Ok(response) = serde_json::from_str::<ChatResponseChunk>(data) {
+                                yield response;
+                            }
+                        }
+                    }
+                    buffer.clear();
+                }
+            }
+        })
     }
 
     fn handle_error(status: u16, body: String) -> BigModelError {
