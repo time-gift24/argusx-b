@@ -1,0 +1,46 @@
+exclude: '^(target/|tauri-app/node_modules/|tauri-app/target/)'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt-check
+        name: cargo fmt --all -- --check
+        language: system
+        entry: bash -c 'cargo fmt --all -- --check'
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: cargo-clippy-fast
+        name: cargo clippy -p prompt_lab_core -p prompt_lab_cli --all-targets -- -D warnings
+        language: system
+        entry: bash -c 'cargo clippy -p prompt_lab_core -p prompt_lab_cli --all-targets -- -D warnings'
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: cargo-test-core-integration
+        name: cargo test -p prompt_lab_core --tests
+        language: system
+        entry: bash -c 'cargo test -p prompt_lab_core --tests'
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: cargo-clippy-workspace
+        name: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        language: system
+        entry: bash -c 'cargo clippy --workspace --all-targets --all-features -- -D warnings'
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: cargo-test-workspace
+        name: cargo test --workspace --all-targets --all-features
+        language: system
+        entry: bash -c 'cargo test --workspace --all-targets --all-features'
+        pass_filenames: false
+        stages: [pre-push]

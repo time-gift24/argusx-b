@@ -1,0 +1,15 @@
+[package]
+name = "prompt_lab_cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "prompt-lab"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+comfy-table = "7"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+prompt_lab_core = { path = "../prompt_lab_core" }

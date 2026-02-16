@@ -1,0 +1,16 @@
+# Rust / Cargo
+target/
+Cargo.lock
+
+# Docs (not committed)
+docs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.venv

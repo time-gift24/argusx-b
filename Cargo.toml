@@ -1,0 +1,3 @@
+[workspace]
+members = ["tauri-app", "prompt_lab_core", "prompt_lab_cli"]
+resolver = "2"
