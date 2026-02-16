@@ -88,8 +88,7 @@ impl BigModelClient {
                         let line = buffer[..pos].trim_end().to_string();
                         buffer = buffer[pos + 1..].to_string();
 
-                        if line.starts_with("data: ") {
-                            let data = &line[6..];
+                        if let Some(data) = line.strip_prefix("data: ") {
                             if data == "[DONE]" {
                                 return;
                             }
