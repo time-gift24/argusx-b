@@ -83,19 +83,25 @@ impl BigModelClient {
                 if let Ok(text) = String::from_utf8(bytes.to_vec()) {
                     buffer.push_str(&text);
 
-                    // Parse SSE format
-                    for line in buffer.lines() {
+                    // Process complete lines, keep incomplete ones in buffer
+                    while let Some(pos) = buffer.find('\n') {
+                        let line = buffer[..pos].trim_end().to_string();
+                        buffer = buffer[pos + 1..].to_string();
+
                         if line.starts_with("data: ") {
                             let data = &line[6..];
                             if data == "[DONE]" {
                                 return;
                             }
-                            if let Ok(response) = serde_json::from_str::<ChatResponseChunk>(data) {
-                                yield response;
+                            match serde_json::from_str::<ChatResponseChunk>(data) {
+                                Ok(response) => yield response,
+                                Err(e) => {
+                                    // Log or handle parse error appropriately
+                                    eprintln!("Failed to parse SSE chunk: {}", e);
+                                }
                             }
                         }
                     }
-                    buffer.clear();
                 }
             }
         })
