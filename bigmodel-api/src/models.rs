@@ -226,6 +226,21 @@ impl ChatRequest {
         self.tools = Some(tools);
         self
     }
+
+    pub fn top_p(mut self, value: f32) -> Self {
+        self.top_p = Some(value);
+        self
+    }
+
+    pub fn tool_choice(mut self, choice: ToolChoice) -> Self {
+        self.tool_choice = Some(choice);
+        self
+    }
+
+    pub fn thinking(mut self, thinking: Thinking) -> Self {
+        self.thinking = Some(thinking);
+        self
+    }
 }
 
 impl Message {
@@ -257,5 +272,11 @@ impl Message {
 impl From<String> for Content {
     fn from(s: String) -> Self {
         Content::Text(s)
+    }
+}
+
+impl From<&str> for Content {
+    fn from(s: &str) -> Self {
+        Content::Text(s.to_string())
     }
 }
