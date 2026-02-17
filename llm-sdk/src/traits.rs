@@ -8,6 +8,7 @@ use std::collections::HashSet;
 // ============================================================================
 
 /// Trait for language model implementations.
+#[async_trait]
 pub trait LanguageModelTrait: Send + Sync {
     /// Returns the provider name.
     fn provider(&self) -> &'static str;
