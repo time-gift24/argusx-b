@@ -22,7 +22,7 @@ impl BigModelClient {
     }
 
     pub async fn chat(&self, request: ChatRequest) -> Result<ChatResponse> {
-        let url = format!("{}/v4/chat/completions", self.config.base_url);
+        let url = format!("{}/chat/completions", self.config.base_url);
 
         let response = self
             .http
@@ -47,7 +47,7 @@ impl BigModelClient {
         &self,
         request: ChatRequest,
     ) -> Pin<Box<dyn Stream<Item = Result<ChatResponseChunk>> + Send + '_>> {
-        let url = format!("{}/v4/chat/completions", self.config.base_url);
+        let url = format!("{}/chat/completions", self.config.base_url);
         let api_key = self.config.api_key.clone();
         let http_client = self.http.clone();
 

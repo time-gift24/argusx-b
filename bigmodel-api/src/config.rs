@@ -10,7 +10,7 @@ impl Config {
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
             api_key: api_key.into(),
-            base_url: "https://open.bigmodel.cn".to_string(),
+            base_url: "https://open.bigmodel.cn/api/paas/v4".to_string(),
         }
     }
 
