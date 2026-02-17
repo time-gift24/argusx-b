@@ -31,7 +31,10 @@ pub trait LanguageModelTrait: Send + Sync {
         input: LanguageModelInput,
     ) -> std::result::Result<
         Box<
-            dyn Stream<Item = std::result::Result<PartialModelResponse, ModelError>> + Send + Unpin,
+            dyn Stream<Item = std::result::Result<PartialModelResponse, ModelError>>
+                + Send
+                + Unpin
+                + '_,
         >,
         ModelError,
     >;
