@@ -8,3 +8,6 @@ pub use error::*;
 
 pub mod traits;
 pub use traits::*;
+
+pub mod providers;
+pub use providers::bigmodel::BigModelProvider;
