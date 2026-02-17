@@ -2,6 +2,7 @@ use std::env;
 
 pub struct Config {
     pub api_key: Option<String>,
+    #[allow(dead_code)]
     pub model: Option<String>,
 }
 

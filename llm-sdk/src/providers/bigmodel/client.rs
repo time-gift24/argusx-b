@@ -1,6 +1,5 @@
 use crate::error::ModelError;
 use crate::error::Result;
-use crate::traits::Stream;
 use crate::{
     ContentDelta, LanguageModelCapability, LanguageModelInput, LanguageModelMetadata,
     LanguageModelTrait, Message, ModelResponse, ModelUsage, Part, PartDelta, PartialModelResponse,
@@ -12,28 +11,6 @@ use bigmodel_api::{
     Role as ApiRole,
 };
 use futures::stream::StreamExt;
-use std::marker::Unpin;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-
-/// Adapter that wraps a futures Stream and implements llm_sdk's custom Stream trait.
-struct FuturesStreamAdapter<S> {
-    inner: Pin<Box<S>>,
-}
-
-impl<S> Stream for FuturesStreamAdapter<S>
-where
-    S: futures::Stream<Item = std::result::Result<PartialModelResponse, ModelError>> + Send,
-{
-    type Item = std::result::Result<PartialModelResponse, ModelError>;
-
-    fn poll_next(self: std::pin::Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        // Poll the inner pinned stream - we can use the futures::Stream trait directly
-        // Since S: Stream, we can call poll_next on a Pin<&mut S>
-        futures::Stream::poll_next(this.inner.as_mut(), cx)
-    }
-}
 
 pub struct BigModelProvider {
     client: BigModelClient,
@@ -102,7 +79,7 @@ impl LanguageModelTrait for BigModelProvider {
         input: LanguageModelInput,
     ) -> std::result::Result<
         Box<
-            dyn Stream<Item = std::result::Result<PartialModelResponse, ModelError>>
+            dyn futures::Stream<Item = std::result::Result<PartialModelResponse, ModelError>>
                 + Send
                 + Unpin
                 + '_,
@@ -125,19 +102,21 @@ impl LanguageModelTrait for BigModelProvider {
         let stream = self.client.chat_stream(request);
 
         // Convert the stream: map the chunks to llm_sdk types
-        // Use a boxed stream without explicit lifetime to let Rust infer it
-        let mapped_stream = Box::pin(stream.map(
-            |chunk_result: ApiResult<bigmodel_api::ChatResponseChunk>| {
+        // Use a boxed stream (Box::new instead of Box::pin since Stream + Unpin)
+        let mapped_stream: Box<
+            dyn futures::Stream<Item = std::result::Result<PartialModelResponse, ModelError>>
+                + Send
+                + Unpin,
+        > = Box::new(
+            stream.map(|chunk_result: ApiResult<bigmodel_api::ChatResponseChunk>| {
                 chunk_result
                     .map(convert_chunk_response)
                     .map_err(|e| ModelError::ServerError(e.to_string()))
-            },
-        ));
+            }),
+        );
 
-        // Wrap the futures stream in our adapter to implement the custom Stream trait
-        Ok(Box::new(FuturesStreamAdapter {
-            inner: mapped_stream,
-        }))
+        // Return the futures stream directly
+        Ok(mapped_stream)
     }
 }
 

@@ -1,8 +1,10 @@
 use super::*;
 
+#[allow(dead_code)]
 pub struct OpenaiProvider;
 
 impl OpenaiProvider {
+    #[allow(dead_code)]
     pub fn new(_api_key: &str) -> Self {
         Self
     }

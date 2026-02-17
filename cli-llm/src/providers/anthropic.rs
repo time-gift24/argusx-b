@@ -1,8 +1,10 @@
 use super::*;
 
+#[allow(dead_code)]
 pub struct AnthropicProvider;
 
 impl AnthropicProvider {
+    #[allow(dead_code)]
     pub fn new(_api_key: &str) -> Self {
         Self
     }

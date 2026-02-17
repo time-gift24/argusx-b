@@ -1,10 +1,34 @@
-use crate::output::format_output;
 use crate::cli::OutputFormat;
-use crate::providers::Provider;
+use crate::providers::{Provider, StreamResult};
 use anyhow::Result;
-use llm_sdk::{Message, LanguageModelInput};
+use futures::StreamExt;
+use llm_sdk::{LanguageModelInput, Message, PartDelta};
 
-pub async fn run_repl<P>(provider: P, output_format: OutputFormat) -> Result<()>
+async fn handle_stream_in_repl(mut stream: StreamResult<'_>) -> Result<String> {
+    use std::io::Write;
+
+    let mut accumulated = String::new();
+
+    while let Some(result) = stream.next().await {
+        let partial = result?;
+
+        if let Some(delta) = partial.delta {
+            if let PartDelta::Text(text_delta) = delta.part {
+                let new_text = &text_delta.text;
+                if !new_text.is_empty() {
+                    print!("{}", new_text);
+                    std::io::stdout().flush()?;
+                    accumulated.push_str(new_text);
+                }
+            }
+        }
+    }
+
+    println!();
+    Ok(accumulated)
+}
+
+pub async fn run_repl<P>(provider: P, _output_format: OutputFormat) -> Result<()>
 where
     P: Provider,
 {
@@ -34,13 +58,10 @@ where
 
         let llm_input = LanguageModelInput::new(messages.clone());
 
-        match provider.generate(llm_input).await {
-            Ok(response) => {
-                let text = format_output(&response, &OutputFormat::Text);
-                println!("{}", format_output(&response, &output_format));
-                println!();
-
-                // Add assistant response to conversation
+        // 使用流式输出
+        match provider.stream(llm_input).await {
+            Ok(stream) => {
+                let text = handle_stream_in_repl(stream).await?;
                 messages.push(Message::assistant_text(text));
             }
             Err(e) => {

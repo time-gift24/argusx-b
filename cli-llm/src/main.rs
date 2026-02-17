@@ -1,12 +1,14 @@
 use anyhow::Result;
 use clap::Parser;
 use futures::StreamExt;
+use llm_sdk::{ModelResponse, Part, PartDelta, TextPart};
+use std::io::Write;
 
 mod cli;
 mod config;
 mod output;
-mod repl;
 mod providers;
+mod repl;
 
 use cli::*;
 use config::Config;
@@ -42,9 +44,56 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+async fn handle_streaming(mut stream: providers::StreamResult<'_>) -> Result<ModelResponse> {
+    let mut accumulated_content = String::new();
+    let mut final_response: Option<ModelResponse> = None;
+
+    while let Some(result) = stream.next().await {
+        let partial = result?;
+
+        // 处理增量内容 - 逐字输出
+        if let Some(delta) = &partial.delta {
+            if let PartDelta::Text(text_delta) = &delta.part {
+                let new_text = &text_delta.text;
+                if !new_text.is_empty() {
+                    print!("{}", new_text);
+                    std::io::stdout().flush()?;
+                    accumulated_content.push_str(new_text);
+                }
+            }
+        }
+
+        // 保留 usage 信息（可能在最后一个 chunk 中）
+        if partial.usage.is_some() || partial.cost.is_some() {
+            final_response = Some(ModelResponse {
+                content: vec![Part::Text(TextPart {
+                    text: accumulated_content.clone(),
+                    citations: None,
+                })],
+                usage: partial.usage,
+                cost: partial.cost,
+            });
+        }
+    }
+
+    println!(); // 换行
+
+    // 返回最终响应（包含 usage 信息）
+    Ok(final_response.unwrap_or(ModelResponse {
+        content: vec![Part::Text(TextPart {
+            text: accumulated_content,
+            citations: None,
+        })],
+        usage: None,
+        cost: None,
+    }))
+}
+
 async fn run_provider(provider_name: &str, model: String, opts: CommonOpts) -> Result<()> {
     let config = Config::from_env(provider_name);
-    let api_key = opts.api_key.or(config.get_api_key(None))
+    let api_key = opts
+        .api_key
+        .or(config.get_api_key(None))
         .expect("API key required (set BIGMODEL_API_KEY or use --api-key)");
 
     let stream_enabled = if opts.no_stream { false } else { opts.stream };
@@ -62,11 +111,14 @@ async fn run_provider(provider_name: &str, model: String, opts: CommonOpts) -> R
         let llm_input = llm_sdk::LanguageModelInput::new(messages);
 
         if stream_enabled {
-            // Stream output
-            let mut stream = provider.stream(llm_input).await?;
-            while let Some(result) = stream.next().await {
-                let response = result?;
-                print!("{}", output::format_output(&response, &opts.output));
+            let stream = provider.stream(llm_input).await?;
+            let response = handle_streaming(stream).await?;
+            // 如果需要打印 usage，可以在这里处理
+            if let Some(usage) = &response.usage {
+                eprintln!(
+                    "[Usage: {} in, {} out]",
+                    usage.input_tokens, usage.output_tokens
+                );
             }
         } else {
             let response = provider.generate(llm_input).await?;
@@ -83,10 +135,14 @@ async fn run_provider(provider_name: &str, model: String, opts: CommonOpts) -> R
         let llm_input = llm_sdk::LanguageModelInput::new(messages);
 
         if stream_enabled {
-            let mut stream = provider.stream(llm_input).await?;
-            while let Some(result) = stream.next().await {
-                let response = result?;
-                print!("{}", output::format_output(&response, &opts.output));
+            let stream = provider.stream(llm_input).await?;
+            let response = handle_streaming(stream).await?;
+            // 如果需要打印 usage，可以在这里处理
+            if let Some(usage) = &response.usage {
+                eprintln!(
+                    "[Usage: {} in, {} out]",
+                    usage.input_tokens, usage.output_tokens
+                );
             }
         } else {
             let response = provider.generate(llm_input).await?;
