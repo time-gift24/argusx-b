@@ -141,7 +141,8 @@ pub struct ChatResponse {
     pub created: i64,
     pub model: String,
     pub choices: Vec<Choice>,
-    pub usage: Usage,
+    #[serde(default)]
+    pub usage: Option<Usage>,
     #[serde(default)]
     pub content_filter: Vec<serde_json::Value>,
 }

@@ -156,9 +156,9 @@ fn convert_response(response: bigmodel_api::ChatResponse) -> ModelResponse {
 
     ModelResponse {
         content,
-        usage: Some(ModelUsage {
-            input_tokens: response.usage.prompt_tokens as u64,
-            output_tokens: response.usage.completion_tokens as u64,
+        usage: response.usage.map(|u| ModelUsage {
+            input_tokens: u.prompt_tokens as u64,
+            output_tokens: u.completion_tokens as u64,
         }),
         cost: None,
     }
