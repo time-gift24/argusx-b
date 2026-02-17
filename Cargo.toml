@@ -1,3 +1,3 @@
 [workspace]
-members = ["tauri-app", "prompt_lab_core", "prompt_lab_cli", "argusx-common", "bigmodel-api"]
+members = ["tauri-app", "prompt_lab_core", "prompt_lab_cli", "argusx-common", "bigmodel-api", "llm-sdk"]
 resolver = "2"
