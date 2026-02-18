@@ -1,0 +1,89 @@
+# prek configuration - drop-in replacement for pre-commit
+# See https://prek.j178.dev/ for documentation
+
+# Global settings
+fail_fast = false
+default_stages = ["pre-commit"]
+
+# Exclude patterns
+exclude = "^(target/|tauri-app/node_modules/|tauri-app/target/|.git/)"
+
+# Remote repo: pre-commit-hooks
+[[repos]]
+repo = "https://github.com/pre-commit/pre-commit-hooks"
+rev = "v4.3.0"
+hooks = [
+    { id = "check-byte-order-marker" },
+    { id = "check-case-conflict" },
+    { id = "check-merge-conflict" },
+    { id = "check-symlinks" },
+    { id = "check-yaml" },
+    { id = "end-of-file-fixer" },
+    { id = "mixed-line-ending" },
+    { id = "trailing-whitespace" },
+]
+
+# Remote repo: black (Python formatter)
+[[repos]]
+repo = "https://github.com/psf/black"
+rev = "22.10.0"
+hooks = [{ id = "black" }]
+
+# Local hooks
+[[repos]]
+repo = "local"
+hooks = [
+    {
+        id = "cargo-fmt",
+        name = "cargo fmt",
+        description = "Format files with rustfmt.",
+        language = "system",
+        entry = "bash -c 'cargo fmt -- --check'",
+        files = "\\.rs$",
+        args = [],
+    },
+    {
+        id = "cargo-deny",
+        name = "cargo deny check",
+        description = "Check cargo dependencies",
+        language = "system",
+        entry = "bash -c 'cargo deny check -d'",
+        files = "\\.rs$",
+    },
+    {
+        id = "typos",
+        name = "typos",
+        description = "check typo",
+        language = "system",
+        entry = "bash -c 'typos'",
+        files = "\\.*$",
+        pass_filenames = false,
+    },
+    {
+        id = "cargo-check",
+        name = "cargo check",
+        description = "Check the package for errors.",
+        language = "system",
+        entry = "bash -c 'cargo check --all'",
+        files = "\\.rs$",
+        pass_filenames = false,
+    },
+    {
+        id = "cargo-clippy",
+        name = "cargo clippy",
+        description = "Lint rust sources",
+        language = "system",
+        entry = "bash -c 'cargo clippy --all-targets --all-features --tests --benches -- -D warnings'",
+        files = "\\.rs$",
+        pass_filenames = false,
+    },
+    {
+        id = "cargo-test",
+        name = "cargo test",
+        description = "unit test for the project",
+        language = "system",
+        entry = "bash -c 'cargo nextest run --all-features'",
+        files = "\\.rs$",
+        pass_filenames = false,
+    },
+]
