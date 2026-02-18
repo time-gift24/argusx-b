@@ -1,5 +1,5 @@
-pub mod vcs;
 pub mod rbac;
+pub mod vcs;
 
-pub use vcs::VersionControl;
 pub use rbac::Rbac;
+pub use vcs::VersionControl;
