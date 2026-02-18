@@ -44,14 +44,21 @@ impl GitoliteClient {
     }
 
     fn execute_ssh(&self, command: &str) -> anyhow::Result<String> {
-        let GitoliteConfig::Ssh { host, user, key_path } = &self.config else {
+        let GitoliteConfig::Ssh {
+            host,
+            user,
+            key_path,
+        } = &self.config
+        else {
             return Err(anyhow!("SSH config required"));
         };
 
         let output = Command::new("ssh")
             .args([
-                "-i", key_path.to_str().unwrap(),
-                "-o", "StrictHostKeyChecking=no",
+                "-i",
+                key_path.to_str().unwrap(),
+                "-o",
+                "StrictHostKeyChecking=no",
                 &format!("{}@{}", user, host),
                 command,
             ])
@@ -61,7 +68,10 @@ impl GitoliteClient {
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {
-            Err(anyhow!("Command failed: {}", String::from_utf8_lossy(&output.stderr)))
+            Err(anyhow!(
+                "Command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ))
         }
     }
 

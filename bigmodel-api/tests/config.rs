@@ -2,7 +2,7 @@
 fn test_config_new() {
     let config = bigmodel_api::Config::new("test-key");
     assert_eq!(config.api_key, "test-key");
-    assert_eq!(config.base_url, "https://open.bigmodel.cn");
+    assert_eq!(config.base_url, "https://open.bigmodel.cn/api/paas/v4");
 }
 
 #[test]

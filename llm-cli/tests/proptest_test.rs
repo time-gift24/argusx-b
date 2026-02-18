@@ -1,5 +1,5 @@
-use cli_llm::cli::OutputFormat;
-use cli_llm::output::format_output;
+use llm_cli::cli::OutputFormat;
+use llm_cli::output::format_output;
 use llm_sdk::{ModelResponse, ModelUsage, Part, TextPart};
 use proptest::prelude::*;
 
