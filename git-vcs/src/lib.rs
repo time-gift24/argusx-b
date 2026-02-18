@@ -1,7 +1,7 @@
 // git-vcs/src/lib.rs
 
-pub mod impl_;
+pub mod r#impl;
 pub mod traits;
 pub mod types;
 
-pub use impl_::Git2VersionControl;
+pub use r#impl::Git2VersionControl;
