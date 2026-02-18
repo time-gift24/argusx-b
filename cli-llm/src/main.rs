@@ -1,8 +1,5 @@
 use anyhow::Result;
 use clap::Parser;
-use futures::StreamExt;
-use llm_sdk::{ModelResponse, Part, PartDelta, TextPart};
-use std::io::Write;
 
 mod cli;
 mod config;
@@ -12,6 +9,7 @@ mod repl;
 
 use cli::*;
 use config::Config;
+use output::handle_streaming;
 use providers::Provider;
 
 #[tokio::main]
@@ -42,51 +40,6 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-async fn handle_streaming(mut stream: providers::StreamResult<'_>) -> Result<ModelResponse> {
-    let mut accumulated_content = String::new();
-    let mut final_response: Option<ModelResponse> = None;
-
-    while let Some(result) = stream.next().await {
-        let partial = result?;
-
-        // 处理增量内容 - 逐字输出
-        if let Some(delta) = &partial.delta {
-            if let PartDelta::Text(text_delta) = &delta.part {
-                let new_text = &text_delta.text;
-                if !new_text.is_empty() {
-                    print!("{}", new_text);
-                    std::io::stdout().flush()?;
-                    accumulated_content.push_str(new_text);
-                }
-            }
-        }
-
-        // 保留 usage 信息（可能在最后一个 chunk 中）
-        if partial.usage.is_some() || partial.cost.is_some() {
-            final_response = Some(ModelResponse {
-                content: vec![Part::Text(TextPart {
-                    text: accumulated_content.clone(),
-                    citations: None,
-                })],
-                usage: partial.usage,
-                cost: partial.cost,
-            });
-        }
-    }
-
-    println!(); // 换行
-
-    // 返回最终响应（包含 usage 信息）
-    Ok(final_response.unwrap_or(ModelResponse {
-        content: vec![Part::Text(TextPart {
-            text: accumulated_content,
-            citations: None,
-        })],
-        usage: None,
-        cost: None,
-    }))
 }
 
 async fn run_provider(provider_name: &str, model: String, opts: CommonOpts) -> Result<()> {

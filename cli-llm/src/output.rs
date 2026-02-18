@@ -1,6 +1,10 @@
 use crate::cli::OutputFormat;
-use llm_sdk::{ModelResponse, PartialModelResponse};
+use crate::providers::StreamResult;
+use anyhow::Result;
+use futures::StreamExt;
+use llm_sdk::{ModelResponse, Part, PartDelta, PartialModelResponse, TextPart};
 use serde::Serialize;
+use std::io::Write;
 
 #[derive(Serialize)]
 struct JsonOutput {
@@ -48,18 +52,12 @@ fn format_text(response: &ModelResponse) -> String {
 
 #[allow(dead_code)]
 fn format_partial_text(response: &PartialModelResponse) -> String {
-    // For partial responses, extract text from delta
-    response
-        .delta
-        .iter()
-        .filter_map(|d| {
-            if let llm_sdk::PartDelta::Text(t) = &d.part {
-                Some(t.text.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
+    if let Some(delta) = &response.delta {
+        if let llm_sdk::PartDelta::Text(t) = &delta.part {
+            return t.text.clone();
+        }
+    }
+    String::new()
 }
 
 fn format_json(response: &ModelResponse) -> String {
@@ -118,4 +116,49 @@ fn format_partial_markdown(response: &PartialModelResponse) -> String {
         ));
     }
     md
+}
+
+/// 处理流式输出，逐字打印到终端并返回完整响应
+pub async fn handle_streaming(mut stream: StreamResult<'_>) -> Result<ModelResponse> {
+    let mut accumulated_content = String::new();
+    let mut final_response: Option<ModelResponse> = None;
+
+    while let Some(result) = stream.next().await {
+        let partial = result?;
+
+        // 处理增量内容 - 逐字输出
+        if let Some(delta) = partial.delta {
+            if let PartDelta::Text(text_delta) = delta.part {
+                let new_text = &text_delta.text;
+                if !new_text.is_empty() {
+                    print!("{}", new_text);
+                    std::io::stdout().flush()?;
+                    accumulated_content.push_str(new_text);
+                }
+            }
+        }
+
+        // 保留 usage 信息
+        if partial.usage.is_some() || partial.cost.is_some() {
+            final_response = Some(ModelResponse {
+                content: vec![Part::Text(TextPart {
+                    text: accumulated_content.clone(),
+                    citations: None,
+                })],
+                usage: partial.usage,
+                cost: partial.cost,
+            });
+        }
+    }
+
+    println!(); // 换行
+
+    Ok(final_response.unwrap_or(ModelResponse {
+        content: vec![Part::Text(TextPart {
+            text: accumulated_content,
+            citations: None,
+        })],
+        usage: None,
+        cost: None,
+    }))
 }

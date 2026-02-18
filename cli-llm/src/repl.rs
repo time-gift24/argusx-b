@@ -1,31 +1,25 @@
 use crate::cli::OutputFormat;
+use crate::output;
 use crate::providers::{Provider, StreamResult};
 use anyhow::Result;
-use futures::StreamExt;
-use llm_sdk::{LanguageModelInput, Message, PartDelta};
+use llm_sdk::{LanguageModelInput, Message};
 
-async fn handle_stream_in_repl(mut stream: StreamResult<'_>) -> Result<String> {
-    use std::io::Write;
-
-    let mut accumulated = String::new();
-
-    while let Some(result) = stream.next().await {
-        let partial = result?;
-
-        if let Some(delta) = partial.delta {
-            if let PartDelta::Text(text_delta) = delta.part {
-                let new_text = &text_delta.text;
-                if !new_text.is_empty() {
-                    print!("{}", new_text);
-                    std::io::stdout().flush()?;
-                    accumulated.push_str(new_text);
-                }
+async fn handle_stream_in_repl(stream: StreamResult<'_>) -> Result<String> {
+    let response = output::handle_streaming(stream).await?;
+    // 从 ModelResponse 中提取文本内容
+    let text = response
+        .content
+        .iter()
+        .filter_map(|p| {
+            if let llm_sdk::Part::Text(t) = p {
+                Some(t.text.clone())
+            } else {
+                None
             }
-        }
-    }
-
-    println!();
-    Ok(accumulated)
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    Ok(text)
 }
 
 pub async fn run_repl<P>(provider: P, _output_format: OutputFormat) -> Result<()>
