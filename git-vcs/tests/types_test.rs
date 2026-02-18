@@ -1,4 +1,4 @@
-use git_vcs::types::{Branch, CommitId, Tag, User};
+use git_vcs::types::{Branch, CommitId, User};
 
 #[test]
 fn test_commit_id_new_and_access() {
