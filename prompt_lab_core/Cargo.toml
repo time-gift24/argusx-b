@@ -2,15 +2,16 @@
 name = "prompt_lab_core"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 argusx-common = { path = "../argusx-common" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-chrono = { version = "0.4", features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "macros", "chrono"] }
-thiserror = "2"
-tokio = { version = "1", features = ["rt", "macros", "fs"] }
+thiserror.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
-tempfile = "3"
+tempfile.workspace = true

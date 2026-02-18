@@ -2,15 +2,16 @@
 name = "argusx-common"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
-toml = "0.8"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tracing-appender = "0.2"
-serde = { version = "1", features = ["derive"] }
-thiserror = "2"
-anyhow = "1"
+toml.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
 
 [dev-dependencies]
-tempfile = "3"
+tempfile.workspace = true

@@ -1,3 +1,36 @@
 [workspace]
 members = ["tauri-app", "prompt_lab_core", "prompt_lab_cli", "argusx-common", "bigmodel-api", "llm-sdk", "llm-cli"]
 resolver = "2"
+
+[workspace.dependencies]
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "rt"] }
+
+# Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "http2"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Utils
+async-trait = "0.1"
+futures = "0.3"
+async-stream = "0.3"
+bytes = "1"
+chrono = { version = "0.4", features = ["serde"] }
+toml = "0.8"
+tempfile = "3"
+comfy-table = "7"
