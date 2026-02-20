@@ -5,10 +5,10 @@ import {
   SidebarProvider,
   SidebarInset,
 } from "@/components/ui/sidebar";
-import "../app/globals.css";
-import { AppSidebar } from "@/components/app-sidebar";
-import { ChatSidebar } from "@/components/chat-sidebar";
-import { SidebarTrigger } from "@/components/sidebar-trigger";
+import "../../app/globals.css";
+import { AppSidebar } from "./sidebar/app-sidebar";
+import { ChatSidebar } from "./sidebar/chat-sidebar";
+import { SidebarTrigger } from "./sidebar/sidebar-trigger";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
