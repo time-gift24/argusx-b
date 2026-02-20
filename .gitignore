@@ -17,3 +17,6 @@ docs/
 
 # Vendor code (external, not committed)
 .vendor/
+
+# Worktrees
+.worktrees/
