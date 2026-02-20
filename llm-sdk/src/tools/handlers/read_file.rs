@@ -279,6 +279,14 @@ async fn read_indentation_block(
     let mut all_lines = Vec::new();
     let mut buffer = Vec::new();
     let mut line_number = 0;
+    let _ = config.as_ref().map(|c| {
+        (
+            c.anchor_line,
+            c.max_levels,
+            c.include_siblings,
+            c.include_header,
+        )
+    });
 
     // Read all lines first
     loop {
@@ -333,8 +341,9 @@ fn format_line(bytes: &[u8]) -> String {
     let decoded = String::from_utf8_lossy(bytes);
     let trimmed = decoded.trim_end_matches(|c| c == '\n' || c == '\r');
 
-    if trimmed.len() > MAX_LINE_LENGTH {
-        format!("{}...", &trimmed[..MAX_LINE_LENGTH])
+    if trimmed.chars().count() > MAX_LINE_LENGTH {
+        let truncated: String = trimmed.chars().take(MAX_LINE_LENGTH).collect();
+        format!("{}...", truncated)
     } else {
         trimmed.to_string()
     }
@@ -388,6 +397,48 @@ mod tests {
         match result {
             ToolOutput::Function { body, .. } => {
                 assert!(body.as_text().unwrap().contains("line 1"));
+            }
+            _ => panic!("expected function output"),
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_read_file_utf8_long_line_does_not_panic(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut temp = NamedTempFile::new()?;
+        let long_line = "你".repeat(MAX_LINE_LENGTH + 50);
+        writeln!(temp, "{}", long_line)?;
+
+        let handler = ReadFileHandler::new();
+        let invocation = ToolInvocation {
+            session: crate::tools::context::SessionInfo::new(
+                "test".to_string(),
+                std::env::temp_dir(),
+            ),
+            turn: crate::tools::context::TurnContext {
+                cwd: std::env::temp_dir(),
+                turn_number: 0,
+                messages: vec![],
+            },
+            tracker: crate::tools::context::TurnDiffTracker::new(),
+            call_id: "test".to_string(),
+            tool_name: "read_file".to_string(),
+            payload: ToolPayload::Function {
+                arguments: serde_json::json!({
+                    "path": temp.path().to_string_lossy(),
+                    "offset": 1,
+                    "limit": 1
+                }).to_string(),
+            },
+        };
+
+        let result = handler.handle(invocation).await?;
+        match result {
+            ToolOutput::Function { body, .. } => {
+                let text = body.as_text().unwrap_or_default();
+                assert!(text.starts_with("L1: "));
             }
             _ => panic!("expected function output"),
         }

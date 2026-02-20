@@ -78,7 +78,7 @@ impl ApplyPatchHandler {
         }
 
         if let Some(path) = line.strip_prefix("*** Update File: ") {
-            return self.update_file_start(path.trim()).await;
+            return self.update_file_start(path.trim(), cwd).await;
         }
 
         // Skip other directives for now
@@ -99,9 +99,16 @@ impl ApplyPatchHandler {
         path: &str,
         cwd: &std::path::Path,
     ) -> Result<Option<String>, ToolExecutionError> {
-        // Note: This is a simplified implementation
-        // In a full implementation, you'd read content until *** or End Patch
-        Ok(Some(format!("Would create file: {}", path)))
+        let full_path = if std::path::Path::new(path).is_absolute() {
+            std::path::PathBuf::from(path)
+        } else {
+            cwd.join(path)
+        };
+
+        Err(ToolExecutionError::respond_to_model(format!(
+            "apply_patch add-file is not implemented yet: {}",
+            full_path.display()
+        )))
     }
 
     async fn delete_file(
@@ -129,9 +136,21 @@ impl ApplyPatchHandler {
         Ok(Some(format!("Deleted: {}", full_path.display())))
     }
 
-    async fn update_file_start(&self, path: &str) -> Result<Option<String>, ToolExecutionError> {
-        // This would need to track state for the full update
-        Ok(Some(format!("Would update file: {}", path)))
+    async fn update_file_start(
+        &self,
+        path: &str,
+        cwd: &std::path::Path,
+    ) -> Result<Option<String>, ToolExecutionError> {
+        let full_path = if std::path::Path::new(path).is_absolute() {
+            std::path::PathBuf::from(path)
+        } else {
+            cwd.join(path)
+        };
+
+        Err(ToolExecutionError::respond_to_model(format!(
+            "apply_patch update-file is not implemented yet: {}",
+            full_path.display()
+        )))
     }
 }
 
@@ -220,5 +239,50 @@ Use - and + for modifications with unified diff format."#
             body: OutputBody::Text(result),
             success: Some(true),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::context::{SessionInfo, ToolPayload, TurnContext, TurnDiffTracker};
+
+    fn invocation_with_input(input: &str) -> ToolInvocation {
+        ToolInvocation {
+            session: SessionInfo::new("test-session".to_string(), std::env::temp_dir()),
+            turn: TurnContext {
+                cwd: std::env::temp_dir(),
+                turn_number: 1,
+                messages: vec![],
+            },
+            tracker: TurnDiffTracker::new(),
+            call_id: "call-1".to_string(),
+            tool_name: "apply_patch".to_string(),
+            payload: ToolPayload::Custom {
+                input: input.to_string(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn add_file_directive_is_not_silent_success() {
+        let handler = ApplyPatchHandler::new();
+        let invocation = invocation_with_input(
+            "*** Begin Patch\n*** Add File: /tmp/new.txt\n+hello\n*** End Patch",
+        );
+
+        let result = handler.handle(invocation).await;
+        assert!(result.is_err(), "add file must not report fake success");
+    }
+
+    #[tokio::test]
+    async fn update_file_directive_is_not_silent_success() {
+        let handler = ApplyPatchHandler::new();
+        let invocation = invocation_with_input(
+            "*** Begin Patch\n*** Update File: /tmp/existing.txt\n@@\n-old\n+new\n*** End Patch",
+        );
+
+        let result = handler.handle(invocation).await;
+        assert!(result.is_err(), "update file must not report fake success");
     }
 }

@@ -153,13 +153,15 @@ impl Default for ToolOrchestrator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::context::{OutputBody, SessionInfo, ToolPayload, TurnContext};
+    use crate::tools::handler::ToolKind;
 
     struct TestHandler;
 
     #[async_trait]
     impl ToolHandler for TestHandler {
-        fn kind(&self) -> super::ToolKind {
-            super::ToolKind::Function
+        fn kind(&self) -> ToolKind {
+            ToolKind::Function
         }
 
         fn name(&self) -> String {
@@ -179,9 +181,41 @@ mod tests {
             _invocation: ToolInvocation,
         ) -> Result<ToolOutput, ToolExecutionError> {
             Ok(ToolOutput::Function {
-                body: super::OutputBody::Text("test result".to_string()),
+                body: OutputBody::Text("test result".to_string()),
                 success: Some(true),
             })
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_trusted_returns_handler_output() {
+        let orchestrator = ToolOrchestrator::with_default_gate();
+        let handler = TestHandler;
+        let invocation = ToolInvocation::new(
+            SessionInfo::new("test-session".to_string(), std::env::temp_dir()),
+            TurnContext {
+                cwd: std::env::temp_dir(),
+                turn_number: 1,
+                messages: vec![],
+            },
+            "call-1".to_string(),
+            "test".to_string(),
+            ToolPayload::Function {
+                arguments: "{}".to_string(),
+            },
+        );
+
+        let output = orchestrator
+            .execute_trusted(&handler, invocation)
+            .await
+            .expect("trusted execution should succeed");
+
+        match output {
+            ToolOutput::Function { body, success } => {
+                assert_eq!(body.as_text(), Some("test result"));
+                assert_eq!(success, Some(true));
+            }
+            _ => panic!("expected function output"),
         }
     }
 }

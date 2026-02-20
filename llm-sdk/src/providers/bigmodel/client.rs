@@ -31,7 +31,6 @@ impl BigModelProvider {
                 capabilities: Some(vec![
                     LanguageModelCapability::TextInput,
                     LanguageModelCapability::TextOutput,
-                    LanguageModelCapability::FunctionCalling,
                 ]),
             }),
         }
