@@ -28,7 +28,7 @@ where
 {
     use std::io::{self, Write};
 
-    println!("cli-llm {} (type 'exit' to quit)", provider.name());
+    println!("llm-cli {} (type 'exit' to quit)", provider.name());
     println!();
 
     let mut messages = Vec::new();

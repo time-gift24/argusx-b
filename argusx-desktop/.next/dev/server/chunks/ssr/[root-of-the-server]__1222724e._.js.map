@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 18, "column": 0}, "map": {"version":3,"sources":["file:///Users/wanyaozhong/projects/argusx/argusx-b/argusx-desktop/app/page.tsx"],"sourcesContent":["import { ComponentExample } from \"@/components/component-example\";\n\nexport default function Page() {\nreturn <ComponentExample />;\n}"],"names":[],"mappings":";;;;;;;;;;;;AAEe,SAAS;IACxB,qBAAO,+YAAC;;;;;AACR"}}]
-}

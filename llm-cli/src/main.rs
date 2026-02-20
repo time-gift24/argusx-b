@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
     match cli.provider {
         None => {
             println!("Available providers: bigmodel, openai, anthropic");
-            println!("Use 'cli-llm <provider> --help' for more info");
+            println!("Use 'llm-cli <provider> --help' for more info");
         }
         Some(ProviderCommand::List) => {
             println!("Available providers:");

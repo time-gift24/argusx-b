@@ -1,7 +1,28 @@
+//! Core traits for the LLM SDK.
+//!
+//! This module contains the essential traits for the agent runtime:
+//! - LanguageModelTrait: For LLM provider implementations
+//! - RunSessionTrait: For agent session management
+//! - RunStateTrait: For agent state management
+//!
+//! Additional traits (like memory, plans, approval) are available in the
+//! tools module for the Codex-inspired tool system.
+
 use crate::domain::*;
 use crate::error::*;
 use async_trait::async_trait;
 use std::collections::HashSet;
+
+// ============================================================================
+// Tools module - re-exports
+// ============================================================================
+
+pub use crate::tools::{
+    ToolHandler, ToolKind, ToolInvocation, ToolPayload, ToolOutput,
+    ToolRegistry, ToolRegistryBuilder, ToolOrchestrator,
+    ApprovalGate, ApprovalResult, ApprovalRequirement,
+    OutputBody, McpToolResult, McpContent,
+};
 
 // ============================================================================
 // Trait 1: LanguageModelTrait
@@ -44,14 +65,6 @@ pub trait LanguageModelTrait: Send + Sync {
 // Supporting Types for RunSessionTrait
 // ============================================================================
 
-/// Parameters for initializing an agent session.
-pub struct AgentParams<Ctx> {
-    pub system_prompt: Option<String>,
-    pub tools: Vec<Box<dyn AgentToolTrait<Ctx>>>,
-    pub max_turns: Option<u32>,
-    pub context: Ctx,
-}
-
 /// Minimal stream trait for streaming model responses.
 pub trait Stream: Send + Unpin {
     fn poll_next(
@@ -72,21 +85,21 @@ pub trait AgentEventStream: Send + Unpin {
     ) -> std::task::Poll<Option<std::result::Result<AgentStreamEvent, SessionError>>>;
 }
 
+/// Parameters for initializing an agent session.
+pub struct AgentParams {
+    pub system_prompt: Option<String>,
+    /// Tools registered in the session
+    pub tools: Vec<Box<dyn ToolHandler>>,
+    pub max_turns: Option<u32>,
+}
+
 // ============================================================================
 // Trait 2: RunSessionTrait
 // ============================================================================
 
 /// Trait for agent run session management.
 #[async_trait]
-pub trait RunSessionTrait<Ctx>: Send + Sync {
-    /// Initialize a new session with parameters.
-    async fn init(
-        params: AgentParams<Ctx>,
-        context: Ctx,
-    ) -> std::result::Result<Box<dyn RunSessionTrait<Ctx> + Send + Sync>, SessionError>
-    where
-        Self: Sized;
-
+pub trait RunSessionTrait: Send + Sync {
     /// Run the agent with input items.
     async fn run(&self, input: Vec<AgentItem>) -> std::result::Result<AgentResponse, SessionError>;
 
@@ -133,170 +146,4 @@ pub trait RunStateTrait: RunStateView {
 
     /// Finalize the run and produce the agent response.
     fn finalize(&self, final_content: Vec<Part>) -> AgentResponse;
-}
-
-// ============================================================================
-// Trait 5: AgentToolTrait
-// ============================================================================
-
-/// Trait for agent tools that can be executed during runs.
-#[async_trait]
-pub trait AgentToolTrait<Ctx>: Send + Sync {
-    /// Returns the tool name.
-    fn name(&self) -> String;
-
-    /// Returns the tool description.
-    fn description(&self) -> String;
-
-    /// Returns the JSON schema for tool parameters.
-    fn parameters_schema(&self) -> serde_json::Value;
-
-    /// Execute the tool with given arguments.
-    async fn execute(
-        &self,
-        args: serde_json::Value,
-        context: &Ctx,
-        state: &dyn RunStateView,
-    ) -> std::result::Result<Vec<Part>, ToolExecutionError>;
-}
-
-// ============================================================================
-// Trait 6: DelegationToolTrait
-// ============================================================================
-
-/// Trait for tools that delegate to other agents.
-#[async_trait]
-pub trait DelegationToolTrait<Ctx>: Send + Sync {
-    /// Returns the target agent name.
-    fn target_agent_name(&self) -> &str;
-
-    /// Rewrite the task for the target agent.
-    fn rewrite_task(
-        &self,
-        task: String,
-        context: &Ctx,
-    ) -> std::result::Result<Message, ToolExecutionError>;
-
-    /// Execute delegation to the target agent.
-    async fn delegate(
-        &self,
-        task: String,
-        context: &Ctx,
-    ) -> std::result::Result<Vec<Part>, ToolExecutionError>;
-}
-
-// ============================================================================
-// Trait 7: CoreMemoryStoreTrait
-// ============================================================================
-
-/// Trait for core (working) memory storage.
-pub trait CoreMemoryStoreTrait: Send + Sync {
-    /// List all memory blocks in core memory.
-    fn list_core(&self) -> std::result::Result<Vec<MemoryBlock>, MemoryError>;
-
-    /// Upsert (insert or update) a memory block.
-    fn upsert_core(&self, block: MemoryBlock)
-        -> std::result::Result<Vec<MemoryBlock>, MemoryError>;
-
-    /// Delete a memory block by ID.
-    fn delete_core(&self, id: &str) -> std::result::Result<Vec<MemoryBlock>, MemoryError>;
-
-    /// Render core memory for inclusion in system prompt.
-    fn render_for_system_prompt(
-        &self,
-        token_budget: usize,
-    ) -> std::result::Result<String, MemoryError>;
-}
-
-// ============================================================================
-// Trait 8: ArchivalMemoryStoreTrait
-// ============================================================================
-
-/// Trait for archival (long-term) memory storage.
-pub trait ArchivalMemoryStoreTrait: Send + Sync {
-    /// Insert or update an archival memory block.
-    fn upsert_archival(&self, block: MemoryBlock) -> std::result::Result<(), MemoryError>;
-
-    /// Delete an archival memory block by ID.
-    fn delete_archival(&self, id: &str) -> std::result::Result<(), MemoryError>;
-
-    /// Search archival memory for relevant blocks.
-    fn search_archival(
-        &self,
-        query: &str,
-        top_k: usize,
-    ) -> std::result::Result<Vec<MemorySearchHit>, MemoryError>;
-}
-
-// ============================================================================
-// Trait 9: PlanStoreTrait
-// ============================================================================
-
-/// Trait for plan storage and management.
-pub trait PlanStoreTrait: Send + Sync {
-    /// Get a plan snapshot by run ID.
-    fn get_plan(&self, run_id: &str) -> std::result::Result<Option<PlanSnapshot>, PlanError>;
-
-    /// Replace the plan for a run.
-    fn replace_plan(&self, run_id: &str, next: PlanSnapshot) -> std::result::Result<(), PlanError>;
-
-    /// Validate a plan snapshot.
-    fn validate_plan(&self, plan: &PlanSnapshot) -> std::result::Result<(), PlanValidationError>;
-
-    /// Check if a plan is complete for a run.
-    fn is_complete(&self, run_id: &str) -> std::result::Result<bool, PlanError>;
-}
-
-// ============================================================================
-// Trait 10: ApprovalGateTrait
-// ============================================================================
-
-/// Trait for approval gates (human-in-the-loop).
-#[async_trait]
-pub trait ApprovalGateTrait<Ctx>: Send + Sync {
-    /// Generate approval key for an action.
-    fn approval_key(&self, action: &ApprovalAction) -> String;
-
-    /// Check if an action requires approval.
-    fn requires_approval(&self, action: &ApprovalAction, context: &Ctx) -> bool;
-
-    /// Get the current approval decision for a key.
-    async fn current_decision(
-        &self,
-        key: &str,
-        context: &Ctx,
-    ) -> std::result::Result<Option<ApprovalDecision>, ApprovalError>;
-
-    /// Create an error for when approval is required but not granted.
-    fn approval_required_error(&self, action: &ApprovalAction) -> ApprovalError;
-}
-
-// ============================================================================
-// Trait 11: InterruptionResumeTrait
-// ============================================================================
-
-/// Trait for handling interruptions and resumability.
-pub trait InterruptionResumeTrait<Ctx>: Send + Sync {
-    /// Capture a checkpoint from current state.
-    fn capture_checkpoint(
-        &self,
-        items: &[AgentItem],
-        context: &Ctx,
-    ) -> std::result::Result<RunCheckpoint, ResumeError>;
-
-    /// Restore input items from a checkpoint.
-    fn restore_input(
-        &self,
-        checkpoint: &RunCheckpoint,
-    ) -> std::result::Result<Vec<AgentItem>, ResumeError>;
-
-    /// Restore context from a checkpoint.
-    fn restore_context(
-        &self,
-        checkpoint: &RunCheckpoint,
-        updated: Ctx,
-    ) -> std::result::Result<Ctx, ResumeError>;
-
-    /// Check if a tool call should be skipped on resume.
-    fn should_skip_tool_call(&self, tool_call_id: &str, items: &[AgentItem]) -> bool;
 }
