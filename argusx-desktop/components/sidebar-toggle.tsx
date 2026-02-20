@@ -1,14 +1,14 @@
 "use client";
 
 import { PanelLeft, PanelRight } from "lucide-react";
-import { useSidebar } from "@/components/ui/sidebar";
+import { useSidebarLeft } from "@/components/ui/sidebar";
 
 export function SidebarToggle({ className }: { className?: string }) {
-  const { state, toggleSidebar } = useSidebar();
+  const { leftState: state, toggleLeft } = useSidebarLeft();
 
   return (
     <button
-      onClick={toggleSidebar}
+      onClick={toggleLeft}
       className={className}
       aria-label={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
     >
