@@ -31,6 +31,14 @@ const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
+// Resizable sidebar constants
+const SIDEBAR_WIDTH_MIN = 180
+const SIDEBAR_WIDTH_MAX = 480
+const SIDEBAR_WIDTH_DEFAULT_LEFT = 256
+const SIDEBAR_WIDTH_DEFAULT_RIGHT = 400
+const SIDEBAR_STORAGE_KEY_LEFT = "sidebar-width-left"
+const SIDEBAR_STORAGE_KEY_RIGHT = "sidebar-width-right"
+
 type SidebarSetOpen = React.Dispatch<React.SetStateAction<boolean>>
 
 type SidebarLeftContextProps = {
@@ -38,6 +46,10 @@ type SidebarLeftContextProps = {
   leftOpen: boolean
   setLeftOpen: SidebarSetOpen
   toggleLeft: () => void
+  leftWidth: number
+  setLeftWidth: (width: number) => void
+  leftResizing: boolean
+  setLeftResizing: (resizing: boolean) => void
 }
 
 type SidebarRightContextProps = {
@@ -45,6 +57,10 @@ type SidebarRightContextProps = {
   rightOpen: boolean
   setRightOpen: SidebarSetOpen
   toggleRight: () => void
+  rightWidth: number
+  setRightWidth: (width: number) => void
+  rightResizing: boolean
+  setRightResizing: (resizing: boolean) => void
 }
 
 type SidebarMobileContextProps = {
@@ -99,6 +115,8 @@ function useSidebar() {
 function SidebarProvider({
   defaultLeftOpen = true,
   defaultRightOpen = false,
+  defaultLeftWidth = SIDEBAR_WIDTH_DEFAULT_LEFT,
+  defaultRightWidth = SIDEBAR_WIDTH_DEFAULT_RIGHT,
   leftOpen: leftOpenProp,
   rightOpen: rightOpenProp,
   onLeftOpenChange,
@@ -110,6 +128,8 @@ function SidebarProvider({
 }: React.ComponentProps<"div"> & {
   defaultLeftOpen?: boolean
   defaultRightOpen?: boolean
+  defaultLeftWidth?: number
+  defaultRightWidth?: number
   leftOpen?: boolean
   rightOpen?: boolean
   onLeftOpenChange?: (open: boolean) => void
@@ -163,6 +183,47 @@ function SidebarProvider({
     [onRightOpenChange]
   )
 
+  // Left sidebar width state with localStorage persistence
+  const [leftWidth, setLeftWidthState] = React.useState(() => {
+    if (typeof window === "undefined") return defaultLeftWidth
+    const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY_LEFT)
+    if (stored) {
+      const parsed = parseInt(stored, 10)
+      if (!isNaN(parsed)) {
+        return Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, parsed))
+      }
+    }
+    return defaultLeftWidth
+  })
+
+  // Right sidebar width state with localStorage persistence
+  const [rightWidth, setRightWidthState] = React.useState(() => {
+    if (typeof window === "undefined") return defaultRightWidth
+    const stored = localStorage.getItem(SIDEBAR_STORAGE_KEY_RIGHT)
+    if (stored) {
+      const parsed = parseInt(stored, 10)
+      if (!isNaN(parsed)) {
+        const maxRight = Math.floor(window.innerWidth / 2)
+        return Math.max(SIDEBAR_WIDTH_MIN, Math.min(maxRight, parsed))
+      }
+    }
+    return defaultRightWidth
+  })
+
+  // Constrained setWidth functions
+  const setLeftWidth = React.useCallback((width: number) => {
+    const constrained = Math.max(SIDEBAR_WIDTH_MIN, Math.min(SIDEBAR_WIDTH_MAX, width))
+    setLeftWidthState(constrained)
+    localStorage.setItem(SIDEBAR_STORAGE_KEY_LEFT, String(constrained))
+  }, [])
+
+  const setRightWidth = React.useCallback((width: number) => {
+    const maxRight = typeof window !== "undefined" ? Math.floor(window.innerWidth / 2) : SIDEBAR_WIDTH_MAX
+    const constrained = Math.max(SIDEBAR_WIDTH_MIN, Math.min(maxRight, width))
+    setRightWidthState(constrained)
+    localStorage.setItem(SIDEBAR_STORAGE_KEY_RIGHT, String(constrained))
+  }, [])
+
   // Helper to toggle the left sidebar.
   const toggleLeft = React.useCallback(() => {
     setLeftOpen((open) => !open)
@@ -198,6 +259,10 @@ function SidebarProvider({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
 
+  // Resizing state for smooth drag experience
+  const [leftResizing, setLeftResizing] = React.useState(false)
+  const [rightResizing, setRightResizing] = React.useState(false)
+
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
   const leftState = leftOpen ? "expanded" : "collapsed"
@@ -209,8 +274,12 @@ function SidebarProvider({
       leftOpen,
       setLeftOpen,
       toggleLeft,
+      leftWidth,
+      setLeftWidth,
+      leftResizing,
+      setLeftResizing,
     }),
-    [leftState, leftOpen, setLeftOpen, toggleLeft]
+    [leftState, leftOpen, setLeftOpen, toggleLeft, leftWidth, setLeftWidth, leftResizing]
   )
 
   const rightContextValue = React.useMemo<SidebarRightContextProps>(
@@ -219,8 +288,12 @@ function SidebarProvider({
       rightOpen,
       setRightOpen,
       toggleRight,
+      rightWidth,
+      setRightWidth,
+      rightResizing,
+      setRightResizing,
     }),
-    [rightState, rightOpen, setRightOpen, toggleRight]
+    [rightState, rightOpen, setRightOpen, toggleRight, rightWidth, setRightWidth, rightResizing]
   )
 
   const mobileContextValue = React.useMemo<SidebarMobileContextProps>(
@@ -240,7 +313,8 @@ function SidebarProvider({
             data-slot="sidebar-wrapper"
             style={
               {
-                "--sidebar-width": SIDEBAR_WIDTH,
+                "--sidebar-width": `${leftWidth}px`,
+                "--sidebar-width-right": `${rightWidth}px`,
                 "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
                 ...style,
               } as React.CSSProperties
@@ -274,19 +348,28 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
   const { isMobile, openMobile, setOpenMobile } = useSidebarMobile()
-  const { leftState } = useSidebarLeft()
-  const { rightState } = useSidebarRight()
+  const { leftState, leftWidth, leftResizing } = useSidebarLeft()
+  const { rightState, rightWidth, rightResizing } = useSidebarRight()
 
-  // Get the correct state based on side
+  // Get the correct state and width based on side
   const state = side === "left" ? leftState : rightState
+  const width = side === "left" ? leftWidth : rightWidth
+  const isResizing = side === "left" ? leftResizing : rightResizing
+  const cssVar = side === "left" ? "--sidebar-width" : "--sidebar-width-right"
 
   if (collapsible === "none") {
     return (
       <div
         data-slot="sidebar"
-        style={style}
+        style={
+          {
+            [cssVar]: `${width}px`,
+            ...style,
+          } as React.CSSProperties
+        }
         className={cn(
           "bg-sidebar text-sidebar-foreground flex h-full w-(--sidebar-width) flex-col",
+          side === "right" && "w-[var(--sidebar-width-right)]",
           className
         )}
         {...props}
@@ -330,13 +413,21 @@ function Sidebar({
       data-variant={variant}
       data-side={side}
       data-slot="sidebar"
-      style={style}
+      data-resizing={isResizing || undefined}
+      style={
+        {
+          [cssVar]: `${width}px`,
+          ...style,
+        } as React.CSSProperties
+      }
     >
       {/* This is what handles the sidebar gap on desktop */}
       <div
         data-slot="sidebar-gap"
         className={cn(
-          "transition-[width] duration-200 ease-linear relative w-(--sidebar-width) bg-transparent",
+          "relative bg-transparent",
+          !isResizing && "transition-[width] duration-200 ease-linear",
+          side === "left" ? "w-(--sidebar-width)" : "w-[var(--sidebar-width-right)]",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
@@ -348,7 +439,9 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+          "fixed inset-y-0 z-10 hidden h-svh md:flex",
+          !isResizing && "transition-[left,right,width] duration-200 ease-linear",
+          side === "left" ? "left-0 w-(--sidebar-width) group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]" : "right-0 w-[var(--sidebar-width-right)] group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width-right)*-1)]",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
@@ -407,34 +500,87 @@ function SidebarRail({
   className,
   side = "left",
   ...props
-}: React.ComponentProps<"button"> & { side?: "left" | "right" }) {
-  const { toggleLeft } = useSidebarLeft()
-  const { toggleRight } = useSidebarRight()
+}: React.ComponentProps<"div"> & { side?: "left" | "right" }) {
+  const { leftOpen, leftWidth, setLeftWidth, setLeftResizing } = useSidebarLeft()
+  const { rightOpen, rightWidth, setRightWidth, setRightResizing } = useSidebarRight()
 
-  const handleClick = () => {
-    if (side === "left") {
-      toggleLeft()
-      return
+  const isOpen = side === "left" ? leftOpen : rightOpen
+  const width = side === "left" ? leftWidth : rightWidth
+  const setWidth = side === "left" ? setLeftWidth : setRightWidth
+  const setResizing = side === "left" ? setLeftResizing : setRightResizing
+
+  const [isResizing, setIsResizing] = React.useState(false)
+  const startXRef = React.useRef(0)
+  const startWidthRef = React.useRef(0)
+
+  const handleMouseDown = React.useCallback(
+    (e: React.MouseEvent) => {
+      if (!isOpen) return
+      e.preventDefault()
+      setIsResizing(true)
+      setResizing(true)
+      startXRef.current = e.clientX
+      startWidthRef.current = width
+      document.body.style.cursor = "ew-resize"
+      document.body.style.userSelect = "none"
+    },
+    [isOpen, width, setResizing]
+  )
+
+  React.useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta =
+        side === "left"
+          ? e.clientX - startXRef.current
+          : startXRef.current - e.clientX
+      const maxWidth = side === "left" ? SIDEBAR_WIDTH_MAX : Math.floor(window.innerWidth / 2)
+      const newWidth = Math.max(
+        SIDEBAR_WIDTH_MIN,
+        Math.min(maxWidth, startWidthRef.current + delta)
+      )
+      setWidth(newWidth)
     }
 
-    toggleRight()
-  }
+    const handleMouseUp = () => {
+      setIsResizing(false)
+      setResizing(false)
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+    }
+
+    window.addEventListener("mousemove", handleMouseMove)
+    window.addEventListener("mouseup", handleMouseUp)
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("mouseup", handleMouseUp)
+    }
+  }, [isResizing, side, setWidth, setResizing])
+
+  const handleDoubleClick = React.useCallback(() => {
+    setWidth(
+      side === "left" ? SIDEBAR_WIDTH_DEFAULT_LEFT : SIDEBAR_WIDTH_DEFAULT_RIGHT
+    )
+  }, [side, setWidth])
 
   return (
-    <button
+    <div
       data-sidebar="rail"
       data-slot="sidebar-rail"
-      aria-label="Toggle Sidebar"
-      tabIndex={-1}
-      onClick={handleClick}
-      title="Toggle Sidebar"
+      aria-label="Resize Sidebar"
+      role="separator"
+      onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
+      title="Drag to resize, double-click to reset"
       className={cn(
-        "hover:after:bg-sidebar-border absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
-        "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
-        "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
-        "hover:group-data-[collapsible=offcanvas]:bg-sidebar group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full",
-        "[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
-        "[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",
+        "absolute inset-y-0 z-20 w-1.5 cursor-ew-resize transition-colors ease-linear",
+        side === "left"
+          ? "right-0 translate-x-1/2"
+          : "left-0 -translate-x-1/2",
+        isResizing && "bg-primary",
+        "hover:bg-sidebar-border",
+        !isOpen && "hidden",
         className
       )}
       {...props}

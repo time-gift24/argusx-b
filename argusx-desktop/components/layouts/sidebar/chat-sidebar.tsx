@@ -46,12 +46,6 @@ export function ChatSidebar({ className, ...props }: React.ComponentProps<typeof
       {...props}
       side="right"
       className={cn(className)}
-      style={
-        {
-          ...(props.style ?? {}),
-          "--sidebar-width": "400px",
-        } as React.CSSProperties
-      }
     >
       <SidebarContent>
         <SidebarGroup>
