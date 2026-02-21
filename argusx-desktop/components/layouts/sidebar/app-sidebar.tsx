@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, MessageCircle, LifeBuoy, Send } from "lucide-react";
+import { Home, ClipboardCheck } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -20,49 +20,11 @@ const navMain = [
     url: "/",
     icon: Home,
     isActive: true,
-    items: [
-      {
-        title: "Overview",
-        url: "/",
-      },
-      {
-        title: "Analytics",
-        url: "/analytics",
-      },
-    ],
   },
   {
-    title: "Chat",
-    url: "/chat",
-    icon: MessageCircle,
-    items: [
-      {
-        title: "New Chat",
-        url: "/chat",
-      },
-      {
-        title: "History",
-        url: "/chat/history",
-      },
-    ],
-  },
-  {
-    title: "Settings",
-    url: "/settings",
-    icon: MessageCircle,
-  },
-];
-
-const navSecondary = [
-  {
-    title: "Support",
-    url: "/support",
-    icon: LifeBuoy,
-  },
-  {
-    title: "Feedback",
-    url: "/feedback",
-    icon: Send,
+    title: "PromptLab",
+    url: "/prompt-lab",
+    icon: ClipboardCheck,
   },
 ];
 
@@ -78,21 +40,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             {navMain.map((item) => (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton asChild isActive={pathname === item.url}>
-                  <Link href={item.url}>
-                    <item.icon className="h-4 w-4" />
-                    <span>{item.title}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
-        </SidebarGroup>
-        <SidebarGroup className="mt-auto">
-          <SidebarGroupLabel>Support</SidebarGroupLabel>
-          <SidebarMenu>
-            {navSecondary.map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton asChild size="sm">
                   <Link href={item.url}>
                     <item.icon className="h-4 w-4" />
                     <span>{item.title}</span>

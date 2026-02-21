@@ -1,9 +1,9 @@
 use argusx_common::config::{DatabaseConfig, Settings};
+use prompt_lab_core::PromptLab;
 use prompt_lab_core::{
-    ChecklistStatus, ChecklistItem, GoldenSetItem, CheckResult as CheckResultModel,
-    AiExecutionLog, SourceType, ExecStatus, TargetLevel,
+    AiExecutionLog, CheckResult as CheckResultModel, ChecklistItem, ChecklistStatus, ExecStatus,
+    GoldenSetItem, SourceType, TargetLevel,
 };
-use prompt_lab_core::{PromptLab};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -505,10 +505,7 @@ async fn update_checklist_item(
 }
 
 #[tauri::command]
-async fn delete_checklist_item(
-    state: State<'_, Arc<PromptLab>>,
-    id: i64,
-) -> Result<(), ApiError> {
+async fn delete_checklist_item(state: State<'_, Arc<PromptLab>>, id: i64) -> Result<(), ApiError> {
     state
         .checklist_service()
         .soft_delete(id)
@@ -643,7 +640,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Get app data directory for database
-            let app_dir = app.path().app_data_dir()
+            let app_dir = app
+                .path()
+                .app_data_dir()
                 .map_err(|e| format!("Failed to get app data directory: {}", e))?;
 
             // Create prompt_lab directory if it doesn't exist
@@ -667,7 +666,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         },
                         logging: argusx_common::config::LoggingConfig::default(),
                     };
-                    PromptLab::new(settings).await
+                    PromptLab::new(settings)
+                        .await
                         .map_err(|e| format!("Failed to initialize PromptLab: {}", e))
                 })?;
 
