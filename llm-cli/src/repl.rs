@@ -4,7 +4,7 @@ use crate::providers::{Provider, StreamResult};
 use anyhow::Result;
 use llm_sdk::{LanguageModelInput, Message};
 
-async fn handle_stream_in_repl(stream: StreamResult<'_>) -> Result<String> {
+async fn handle_stream_in_repl(stream: StreamResult) -> Result<String> {
     let response = output::handle_streaming(stream).await?;
     // 从 ModelResponse 中提取文本内容
     let text = response
@@ -53,7 +53,7 @@ where
         let llm_input = LanguageModelInput::new(messages.clone());
 
         // 使用流式输出
-        match provider.stream(llm_input).await {
+        match provider.stream_events(llm_input).await {
             Ok(stream) => {
                 let text = handle_stream_in_repl(stream).await?;
                 messages.push(Message::assistant_text(text));

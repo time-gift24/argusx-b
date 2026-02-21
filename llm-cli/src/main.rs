@@ -64,7 +64,7 @@ async fn run_provider(provider_name: &str, model: String, opts: CommonOpts) -> R
         let llm_input = llm_sdk::LanguageModelInput::new(messages);
 
         if stream_enabled {
-            let stream = provider.stream(llm_input).await?;
+            let stream = provider.stream_events(llm_input).await?;
             let response = handle_streaming(stream).await?;
             // 如果需要打印 usage，可以在这里处理
             if let Some(usage) = &response.usage {
@@ -88,7 +88,7 @@ async fn run_provider(provider_name: &str, model: String, opts: CommonOpts) -> R
         let llm_input = llm_sdk::LanguageModelInput::new(messages);
 
         if stream_enabled {
-            let stream = provider.stream(llm_input).await?;
+            let stream = provider.stream_events(llm_input).await?;
             let response = handle_streaming(stream).await?;
             // 如果需要打印 usage，可以在这里处理
             if let Some(usage) = &response.usage {

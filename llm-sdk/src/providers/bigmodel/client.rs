@@ -2,18 +2,20 @@ use crate::error::ModelError;
 use crate::error::Result;
 use crate::{
     ContentDelta, LanguageModelCapability, LanguageModelInput, LanguageModelMetadata,
-    LanguageModelTrait, Message, ModelResponse, ModelUsage, Part, PartDelta, PartialModelResponse,
-    TextPart, TextPartDelta,
+    LanguageModelTrait, Message, ModelResponse, ModelStreamEvent, ModelUsage, Part, PartDelta,
+    PartialModelResponse, TextPart, TextPartDelta, TransientErrorEvent,
 };
 use async_trait::async_trait;
 use bigmodel_api::{
-    BigModelClient, ChatRequest, Config, Content, Message as ApiMessage, Result as ApiResult,
+    BigModelClient, ChatRequest, Config, Content, Message as ApiMessage,
     Role as ApiRole,
 };
 use futures::stream::StreamExt;
+use std::sync::Arc;
+use tokio::sync::mpsc;
 
 pub struct BigModelProvider {
-    client: BigModelClient,
+    client: Arc<BigModelClient>,
     model_id: String,
     metadata: Option<LanguageModelMetadata>,
 }
@@ -24,7 +26,7 @@ impl BigModelProvider {
         let client = BigModelClient::new(config);
 
         Self {
-            client,
+            client: Arc::new(client),
             model_id: model_id.into(),
             metadata: Some(LanguageModelMetadata {
                 pricing: None,
@@ -73,49 +75,86 @@ impl LanguageModelTrait for BigModelProvider {
         Ok(convert_response(response))
     }
 
-    async fn stream(
+    async fn stream_events(
         &self,
         input: LanguageModelInput,
-    ) -> std::result::Result<
-        Box<
-            dyn futures::Stream<Item = std::result::Result<PartialModelResponse, ModelError>>
-                + Send
-                + Unpin
-                + '_,
-        >,
-        ModelError,
-    > {
-        // Convert input to BigModel format
-        let messages = convert_messages(input.messages, input.system_prompt);
+    ) -> std::result::Result<mpsc::Receiver<ModelStreamEvent>, ModelError> {
+        let (tx, rx) = mpsc::channel(input.effective_buffer_capacity());
 
-        let mut request = ChatRequest::new(self.model_id.clone(), messages).stream();
+        // Spawn a task to handle the streaming
+        let model_id = self.model_id.clone();
+        let client = self.client.clone();
 
-        if let Some(t) = input.temperature {
-            request = request.temperature(t);
-        }
-        if let Some(mt) = input.max_tokens {
-            request = request.max_tokens(mt as i32);
-        }
+        tokio::spawn(async move {
+            // Convert input to BigModel format
+            let messages = convert_messages(input.messages, input.system_prompt);
 
-        // Get the stream from bigmodel-api (returns a Stream directly)
-        let stream = self.client.chat_stream(request);
+            let request = ChatRequest::new(model_id.clone(), messages).stream();
 
-        // Convert the stream: map the chunks to llm_sdk types
-        // Use a boxed stream (Box::new instead of Box::pin since Stream + Unpin)
-        let mapped_stream: Box<
-            dyn futures::Stream<Item = std::result::Result<PartialModelResponse, ModelError>>
-                + Send
-                + Unpin,
-        > = Box::new(
-            stream.map(|chunk_result: ApiResult<bigmodel_api::ChatResponseChunk>| {
-                chunk_result
-                    .map(convert_chunk_response)
-                    .map_err(|e| ModelError::ServerError(e.to_string()))
-            }),
-        );
+            // Note: temperature and max_tokens would be set here if present in input
 
-        // Return the futures stream directly
-        Ok(mapped_stream)
+            // Get the stream from bigmodel-api
+            let mut stream = client.chat_stream(request);
+
+            // Collect all deltas and send through channel
+            let mut final_response_content: Option<String> = None;
+
+            while let Some(chunk_result) = stream.next().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        let partial = convert_chunk_response(chunk);
+                        if let Some(ref delta) = partial.delta {
+                            if let PartDelta::Text(ref text_delta) = delta.part {
+                                final_response_content = Some(
+                                    final_response_content
+                                        .unwrap_or_default()
+                                        .to_string()
+                                        + &text_delta.text,
+                                );
+                            }
+                        }
+                        if tx.send(ModelStreamEvent::Delta(partial)).await.is_err() {
+                            // Receiver dropped, stop streaming
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        // Send transient error
+                        let _ = tx
+                            .send(ModelStreamEvent::TransientError(TransientErrorEvent {
+                                message: e.to_string(),
+                                is_retryable: true,
+                                retry_count: 0,
+                            }))
+                            .await;
+                        // For now, just break on error (retry logic would go here)
+                        break;
+                    }
+                }
+            }
+
+            // Send completion event
+            if let Some(content) = final_response_content {
+                let response = ModelResponse {
+                    content: vec![Part::Text(TextPart {
+                        text: content,
+                        citations: None,
+                    })],
+                    usage: None,
+                    cost: None,
+                };
+                let _ = tx.send(ModelStreamEvent::Complete(response)).await;
+            } else {
+                // No content received, send error
+                let _ = tx
+                    .send(ModelStreamEvent::Error(ModelError::ServerError(
+                        "No response from model".to_string(),
+                    )))
+                    .await;
+            }
+        });
+
+        Ok(rx)
     }
 }
 

@@ -3,6 +3,7 @@
 //! This module contains all core domain types for the agent runtime,
 //! including messages, parts, model inputs/outputs, and agent types.
 
+use crate::error::{ModelError, SessionError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -264,6 +265,13 @@ pub struct LanguageModelInput {
     pub audio: Option<AudioOptions>,
     pub reasoning: Option<ReasoningOptions>,
     pub metadata: Option<HashMap<String, String>>,
+    /// Buffer capacity for streaming channels. Defaults to 128.
+    #[serde(default = "default_stream_buffer", skip_serializing_if = "Option::is_none")]
+    pub stream_buffer: Option<usize>,
+}
+
+fn default_stream_buffer() -> Option<usize> {
+    Some(128)
 }
 
 impl LanguageModelInput {
@@ -286,7 +294,14 @@ impl LanguageModelInput {
             audio: None,
             reasoning: None,
             metadata: None,
+            stream_buffer: None,
         }
+    }
+
+    /// Effective buffer capacity for streaming channels.
+    /// Defaults to 128, treats 0 as 1.
+    pub fn effective_buffer_capacity(&self) -> usize {
+        self.stream_buffer.unwrap_or(128).max(1)
     }
 
     /// Set the system prompt.
@@ -304,6 +319,12 @@ impl LanguageModelInput {
     /// Set the temperature.
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.temperature = Some(temperature);
+        self
+    }
+
+    /// Set the stream buffer capacity.
+    pub fn with_stream_buffer(mut self, capacity: usize) -> Self {
+        self.stream_buffer = Some(capacity);
         self
     }
 }
@@ -455,6 +476,15 @@ pub struct AgentResponse {
     pub content: Vec<Part>,
 }
 
+impl From<ModelResponse> for AgentResponse {
+    fn from(model: ModelResponse) -> Self {
+        AgentResponse {
+            output: vec![AgentItem::Model(model.clone())],
+            content: model.content,
+        }
+    }
+}
+
 /// Streaming event surface from run_stream.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -546,4 +576,126 @@ pub struct RunCheckpoint {
     pub items: Vec<AgentItem>,
     pub context_fingerprint: String,
     pub interrupted_at: u64,
+}
+
+// ============================================================================
+// Stream Events (Tokio mpsc based)
+// ============================================================================
+
+/// Transient error event for retryable errors.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransientErrorEvent {
+    pub message: String,
+    pub is_retryable: bool,
+    pub retry_count: u32,
+}
+
+/// Model-level stream events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ModelStreamEvent {
+    /// Delta update during streaming.
+    Delta(PartialModelResponse),
+    /// Transient/retryable error occurred.
+    TransientError(TransientErrorEvent),
+    /// Model finished generating.
+    Complete(ModelResponse),
+    /// Irrecoverable model error.
+    Error(ModelError),
+}
+
+/// Run-level stream events (orchestration layer).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum RunStreamEvent {
+    /// Delta update from model.
+    Delta(PartialModelResponse),
+    /// Tool/item execution started.
+    ItemStarted {
+        index: usize,
+        item_id: String,
+        item: AgentItem,
+    },
+    /// Tool/item execution updated.
+    ItemUpdated {
+        index: usize,
+        item_id: String,
+        item: AgentItem,
+    },
+    /// Tool/item execution completed.
+    ItemCompleted {
+        index: usize,
+        item_id: String,
+        item: AgentItem,
+    },
+    /// Transient/retryable error occurred.
+    TransientError(TransientErrorEvent),
+    /// Run completed successfully.
+    Complete(AgentResponse),
+    /// Irrecoverable run error.
+    Error(SessionError),
+}
+
+/// UI thread projection of run events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum UiThreadEvent {
+    /// Text delta for immediate display.
+    TurnTextDelta(String),
+    /// Tool call started.
+    ToolCallStarted { tool_call_id: String, tool_name: String },
+    /// Tool call completed.
+    ToolCallCompleted { tool_call_id: String, tool_name: String },
+    /// Tool call failed.
+    ToolCallFailed { tool_call_id: String, tool_name: String, error: String },
+    /// Run completed.
+    RunCompleted,
+    /// Run failed with error.
+    RunFailed { error: String },
+}
+
+/// Project a RunStreamEvent to UiThreadEvent for UI consumption.
+/// Returns None if the event has no UI projection.
+pub fn project_to_ui(event: RunStreamEvent) -> Option<UiThreadEvent> {
+    match event {
+        RunStreamEvent::Delta(partial) => {
+            // Extract text deltas from the partial response
+            if let Some(ref delta) = partial.delta {
+                if let PartDelta::Text(text_delta) = &delta.part {
+                    return Some(UiThreadEvent::TurnTextDelta(text_delta.text.clone()));
+                }
+            }
+            None
+        }
+        RunStreamEvent::ItemStarted { item_id, item, .. } => {
+            if let AgentItem::Tool(tool) = item {
+                Some(UiThreadEvent::ToolCallStarted {
+                    tool_call_id: item_id,
+                    tool_name: tool.tool_name,
+                })
+            } else {
+                None
+            }
+        }
+        RunStreamEvent::ItemCompleted { item_id, item, .. } => {
+            if let AgentItem::Tool(tool) = item {
+                Some(UiThreadEvent::ToolCallCompleted {
+                    tool_call_id: item_id,
+                    tool_name: tool.tool_name,
+                })
+            } else {
+                None
+            }
+        }
+        RunStreamEvent::TransientError(_err) => {
+            // Could be shown as a warning, but not a critical error
+            None
+        }
+        RunStreamEvent::Complete(_) => Some(UiThreadEvent::RunCompleted),
+        RunStreamEvent::Error(err) => Some(UiThreadEvent::RunFailed {
+            error: err.to_string(),
+        }),
+        RunStreamEvent::ItemUpdated { .. } => None,
+    }
 }

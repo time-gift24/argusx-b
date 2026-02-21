@@ -301,6 +301,8 @@ async fn read_indentation_block(
         }
 
         line_number += 1;
+        let _content = String::from_utf8_lossy(&buffer).trim_end_matches(['\n', '\r']).to_string(); // #[allow(clippy::manual_pattern_char_comparison)]
+#[allow(clippy::manual_pattern_char_comparison)]
         let content = String::from_utf8_lossy(&buffer).trim_end_matches(|c| c == '\n' || c == '\r').to_string();
         let indent = measure_indent(&content);
         all_lines.push((line_number, content, indent));
@@ -339,7 +341,7 @@ async fn read_indentation_block(
 /// Format a line for display, truncating if too long
 fn format_line(bytes: &[u8]) -> String {
     let decoded = String::from_utf8_lossy(bytes);
-    let trimmed = decoded.trim_end_matches(|c| c == '\n' || c == '\r');
+    let trimmed = decoded.trim_end_matches(['\n', '\r']);
 
     if trimmed.chars().count() > MAX_LINE_LENGTH {
         let truncated: String = trimmed.chars().take(MAX_LINE_LENGTH).collect();

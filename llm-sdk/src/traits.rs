@@ -46,50 +46,23 @@ pub trait LanguageModelTrait: Send + Sync {
         input: LanguageModelInput,
     ) -> std::result::Result<ModelResponse, ModelError>;
 
-    /// Stream responses from the model.
-    async fn stream(
+    /// Stream responses from the model, returning a receiver for model events.
+    async fn stream_events(
         &self,
         input: LanguageModelInput,
-    ) -> std::result::Result<
-        Box<
-            dyn futures::Stream<Item = std::result::Result<PartialModelResponse, ModelError>>
-                + Send
-                + Unpin
-                + '_,
-        >,
-        ModelError,
-    >;
+    ) -> std::result::Result<tokio::sync::mpsc::Receiver<ModelStreamEvent>, ModelError>;
 }
 
 // ============================================================================
 // Supporting Types for RunSessionTrait
 // ============================================================================
 
-/// Minimal stream trait for streaming model responses.
-pub trait Stream: Send + Unpin {
-    fn poll_next(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>>
-    where
-        Self: Unpin;
-
-    type Item;
-}
-
-/// Trait for streaming agent events.
-pub trait AgentEventStream: Send + Unpin {
-    fn poll_next(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<std::result::Result<AgentStreamEvent, SessionError>>>;
-}
-
 /// Parameters for initializing an agent session.
+#[derive(Default)]
 pub struct AgentParams {
     pub system_prompt: Option<String>,
     /// Tools registered in the session
-    pub tools: Vec<Box<dyn ToolHandler>>,
+    pub tools: Vec<std::sync::Arc<dyn ToolHandler>>,
     pub max_turns: Option<u32>,
 }
 
@@ -103,11 +76,11 @@ pub trait RunSessionTrait: Send + Sync {
     /// Run the agent with input items.
     async fn run(&self, input: Vec<AgentItem>) -> std::result::Result<AgentResponse, SessionError>;
 
-    /// Run the agent in streaming mode.
-    fn run_stream(
+    /// Run the agent in streaming mode, returning a receiver for run events.
+    async fn run_events(
         &self,
         input: Vec<AgentItem>,
-    ) -> std::result::Result<Box<dyn AgentEventStream + Send + Unpin>, SessionError>;
+    ) -> std::result::Result<tokio::sync::mpsc::Receiver<RunStreamEvent>, SessionError>;
 
     /// Close the session and clean up resources.
     async fn close(self: Box<Self>) -> std::result::Result<(), SessionError>;

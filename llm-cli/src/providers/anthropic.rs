@@ -20,7 +20,7 @@ impl Provider for AnthropicProvider {
         todo!("Anthropic provider not implemented")
     }
 
-    async fn stream(&self, _input: LanguageModelInput) -> Result<StreamResult> {
+    async fn stream_events(&self, _input: LanguageModelInput) -> Result<StreamResult> {
         todo!("Anthropic provider not implemented")
     }
 }
