@@ -37,6 +37,10 @@ impl ChecklistService {
     pub async fn list(&self, filter: ChecklistFilter) -> Result<Vec<ChecklistItem>> {
         self.repo.list_checklist_items(filter).await
     }
+
+    pub async fn soft_delete(&self, id: i64) -> Result<()> {
+        self.repo.soft_delete_checklist_item(id).await
+    }
 }
 
 #[derive(Clone)]
@@ -55,6 +59,10 @@ impl GoldenSetService {
 
     pub async fn list(&self, golden_set_id: i64) -> Result<Vec<GoldenSetItem>> {
         self.repo.list_golden_set_items(golden_set_id).await
+    }
+
+    pub async fn unbind(&self, golden_set_id: i64, checklist_item_id: i64) -> Result<()> {
+        self.repo.unbind_golden_set_item(golden_set_id, checklist_item_id).await
     }
 }
 

@@ -149,6 +149,38 @@ impl PromptLabRepository {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
+    pub async fn unbind_golden_set_item(
+        &self,
+        golden_set_id: i64,
+        checklist_item_id: i64,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            DELETE FROM golden_set_items
+            WHERE golden_set_id = ?1 AND checklist_item_id = ?2
+            "#,
+        )
+        .bind(golden_set_id)
+        .bind(checklist_item_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn soft_delete_checklist_item(&self, id: i64) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE checklist_items
+            SET deleted_at = datetime('now')
+            WHERE id = ?1 AND deleted_at IS NULL
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn upsert_check_result(&self, input: UpsertCheckResultInput) -> Result<CheckResult> {
         let result = input.result.map(|v| v.to_string());
 

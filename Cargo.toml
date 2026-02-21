@@ -1,5 +1,5 @@
 [workspace]
-members = ["argusx-desktop/src-tauri", "prompt_lab_core", "prompt_lab_cli", "argusx-common", "bigmodel-api", "llm-sdk", "llm-cli"]
+members = ["agent-core", "argusx-desktop/src-tauri", "prompt_lab_core", "prompt_lab_cli", "argusx-common", "bigmodel-api", "llm-sdk", "llm-cli"]
 resolver = "2"
 
 [workspace.dependencies]
