@@ -10,15 +10,6 @@ import {
   deleteChecklistItem,
   type ChecklistItem,
 } from "@/lib/api/prompt-lab";
-import { mockInvoke } from "@/lib/mocks/prompt-lab-mock";
-
-// Override the invoke function in development
-if (process.env.NODE_ENV === "development") {
-  require("@tauri-apps/api/core").invoke = async (cmd: string, args?: Record<string, unknown>) => {
-    return mockInvoke(cmd, args);
-  };
-}
-
 export default function ChecklistPage() {
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);

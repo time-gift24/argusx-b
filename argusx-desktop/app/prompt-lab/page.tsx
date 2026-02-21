@@ -8,15 +8,6 @@ import {
   listGoldenSetItems,
   listCheckResults,
 } from "@/lib/api/prompt-lab";
-import { mockInvoke } from "@/lib/mocks/prompt-lab-mock";
-
-// Override the invoke function in development
-if (process.env.NODE_ENV === "development") {
-  require("@tauri-apps/api/core").invoke = async (cmd: string, args?: Record<string, unknown>) => {
-    return mockInvoke(cmd, args);
-  };
-}
-
 export default function PromptLabDashboard() {
   const [stats, setStats] = useState({
     checklistItems: 0,

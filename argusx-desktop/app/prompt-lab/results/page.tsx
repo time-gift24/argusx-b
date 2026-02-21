@@ -5,14 +5,6 @@ import { CheckCircle, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { listCheckResults, type CheckResult } from "@/lib/api/prompt-lab";
-import { mockInvoke } from "@/lib/mocks/prompt-lab-mock";
-
-// Override the invoke function in development
-if (process.env.NODE_ENV === "development") {
-  require("@tauri-apps/api/core").invoke = async (cmd: string, args?: Record<string, unknown>) => {
-    return mockInvoke(cmd, args);
-  };
-}
 
 export default function ResultsPage() {
   const [results, setResults] = useState<CheckResult[]>([]);

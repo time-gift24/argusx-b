@@ -7,14 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { listAiExecutionLogs, type AiExecutionLog } from "@/lib/api/prompt-lab";
-import { mockInvoke } from "@/lib/mocks/prompt-lab-mock";
-
-// Override the invoke function in development
-if (process.env.NODE_ENV === "development") {
-  require("@tauri-apps/api/core").invoke = async (cmd: string, args?: Record<string, unknown>) => {
-    return mockInvoke(cmd, args);
-  };
-}
 
 export default function LogsPage() {
   const [logs, setLogs] = useState<AiExecutionLog[]>([]);

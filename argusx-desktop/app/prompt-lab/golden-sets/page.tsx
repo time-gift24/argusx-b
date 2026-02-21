@@ -10,15 +10,6 @@ import {
   unbindGoldenSetItem,
   type GoldenSetItem,
 } from "@/lib/api/prompt-lab";
-import { mockInvoke } from "@/lib/mocks/prompt-lab-mock";
-
-// Override the invoke function in development
-if (process.env.NODE_ENV === "development") {
-  require("@tauri-apps/api/core").invoke = async (cmd: string, args?: Record<string, unknown>) => {
-    return mockInvoke(cmd, args);
-  };
-}
-
 // Mock golden set display
 const goldenSets = [
   { id: 1, name: "Default Set", itemCount: 2 },
