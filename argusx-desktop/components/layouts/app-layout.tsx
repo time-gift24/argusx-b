@@ -15,7 +15,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <TooltipProvider>
       <SidebarProvider defaultLeftOpen={true} defaultRightOpen={false}>
-        <AppSidebar variant="inset" />
+        <AppSidebar variant="floating" />
         <SidebarInset>
           <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4">
             <div className="flex items-center gap-2">
@@ -36,7 +36,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {children}
           </div>
         </SidebarInset>
-        <ChatSidebar variant="inset" side="right" />
+        <ChatSidebar variant="floating" side="right" />
       </SidebarProvider>
     </TooltipProvider>
   );
