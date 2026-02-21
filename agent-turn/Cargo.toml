@@ -1,0 +1,22 @@
+[package]
+name = "agent-turn"
+version = "0.1.0"
+edition = "2021"
+description = "Turn loop runtime implementation built on agent-core"
+
+[dependencies]
+agent-core = { path = "../agent-core" }
+bigmodel-api = { path = "../bigmodel-api" }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+async-stream = { workspace = true }
+tokio-stream = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "sync"] }

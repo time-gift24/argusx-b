@@ -1,0 +1,321 @@
+use std::sync::Arc;
+
+use agent_core::{
+    AgentError, InputEnvelope, InputPart, InputSource, LanguageModel, ModelEventStream,
+    ModelOutputEvent, ModelRequest, NoteLevel, ToolCall, TranscriptItem, TransientError,
+};
+use async_trait::async_trait;
+use bigmodel_api::{
+    BigModelClient, BigModelError, ChatRequest, ChatResponseChunk, Content, Message, Role,
+};
+use futures::StreamExt;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::UnboundedReceiverStream;
+
+#[derive(Debug, Clone)]
+pub struct BigModelAdapterConfig {
+    pub model: String,
+    pub system_prompt: Option<String>,
+    pub max_tokens: Option<i32>,
+    pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+}
+
+impl Default for BigModelAdapterConfig {
+    fn default() -> Self {
+        Self {
+            model: "glm-4.5".to_string(),
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
+        }
+    }
+}
+
+pub struct BigModelModelAdapter {
+    client: Arc<BigModelClient>,
+    config: BigModelAdapterConfig,
+}
+
+impl BigModelModelAdapter {
+    pub fn new(client: Arc<BigModelClient>) -> Self {
+        Self {
+            client,
+            config: BigModelAdapterConfig::default(),
+        }
+    }
+
+    pub fn with_config(mut self, config: BigModelAdapterConfig) -> Self {
+        self.config = config;
+        self
+    }
+}
+
+#[async_trait]
+impl LanguageModel for BigModelModelAdapter {
+    fn model_name(&self) -> &str {
+        &self.config.model
+    }
+
+    async fn stream(&self, request: ModelRequest) -> Result<ModelEventStream, AgentError> {
+        let request = convert_model_request(request, &self.config);
+        let client = Arc::clone(&self.client);
+        let (tx, rx) = mpsc::unbounded_channel::<Result<ModelOutputEvent, AgentError>>();
+
+        tokio::spawn(async move {
+            let mut stream = client.chat_stream(request);
+            while let Some(item) = stream.next().await {
+                match item {
+                    Ok(chunk) => emit_chunk(chunk, &tx),
+                    Err(err) => {
+                        let _ = tx.send(Err(map_bigmodel_error(err)));
+                        return;
+                    }
+                }
+            }
+
+            let _ = tx.send(Ok(ModelOutputEvent::Completed { usage: None }));
+        });
+
+        Ok(Box::pin(UnboundedReceiverStream::new(rx)))
+    }
+}
+
+fn emit_chunk(
+    chunk: ChatResponseChunk,
+    tx: &mpsc::UnboundedSender<Result<ModelOutputEvent, AgentError>>,
+) {
+    for choice in chunk.choices {
+        if let Some(delta) = choice.delta.reasoning_content {
+            if !delta.is_empty() {
+                let _ = tx.send(Ok(ModelOutputEvent::ReasoningDelta { delta }));
+            }
+        }
+
+        if let Some(delta) = choice.delta.content {
+            if !delta.is_empty() {
+                let _ = tx.send(Ok(ModelOutputEvent::TextDelta { delta }));
+            }
+        }
+    }
+}
+
+fn convert_model_request(request: ModelRequest, cfg: &BigModelAdapterConfig) -> ChatRequest {
+    let mut messages = Vec::new();
+
+    if let Some(prompt) = cfg.system_prompt.as_ref() {
+        messages.push(Message::system(prompt.clone()));
+    }
+
+    for item in request.transcript {
+        if let Some(message) = transcript_item_to_message(item) {
+            messages.push(message);
+        }
+    }
+
+    for input in request.inputs {
+        messages.push(input_envelope_to_message(input));
+    }
+
+    let mut chat_request = ChatRequest::new(cfg.model.clone(), messages).stream();
+    chat_request.max_tokens = cfg.max_tokens;
+    chat_request.temperature = cfg.temperature;
+    chat_request.top_p = cfg.top_p;
+    chat_request
+}
+
+fn transcript_item_to_message(item: TranscriptItem) -> Option<Message> {
+    match item {
+        TranscriptItem::UserMessage { input, .. } => Some(input_envelope_to_message(input)),
+        TranscriptItem::AssistantMessage { text, .. } => Some(Message::assistant(text)),
+        TranscriptItem::Reasoning { text, .. } => Some(Message {
+            role: Role::Assistant,
+            content: Content::Text(String::new()),
+            reasoning_content: Some(text),
+        }),
+        TranscriptItem::ToolCall { call, .. } => Some(Message::assistant(tool_call_as_text(&call))),
+        TranscriptItem::ToolResult { result, .. } => Some(Message {
+            role: Role::Tool,
+            content: Content::Text(result.output.to_string()),
+            reasoning_content: None,
+        }),
+        TranscriptItem::SystemNote { level, message, .. } => Some(Message::system(format!(
+            "{} {}",
+            note_prefix(level),
+            message
+        ))),
+    }
+}
+
+fn input_envelope_to_message(input: InputEnvelope) -> Message {
+    let text = format_input_parts(input.parts);
+    let role = match input.source {
+        InputSource::User => Role::User,
+        InputSource::Tool => Role::Tool,
+        InputSource::System => Role::System,
+    };
+
+    Message {
+        role,
+        content: Content::Text(text),
+        reasoning_content: None,
+    }
+}
+
+fn tool_call_as_text(call: &ToolCall) -> String {
+    format!(
+        "[tool_call] id={} name={} args={}",
+        call.call_id, call.tool_name, call.arguments
+    )
+}
+
+fn note_prefix(level: NoteLevel) -> &'static str {
+    match level {
+        NoteLevel::Info => "[INFO]",
+        NoteLevel::Warn => "[WARN]",
+        NoteLevel::Error => "[ERROR]",
+    }
+}
+
+fn format_input_parts(parts: Vec<InputPart>) -> String {
+    let mut text_parts = Vec::new();
+    for part in parts {
+        match part {
+            InputPart::Text { text } => text_parts.push(text),
+            InputPart::Json { value } => text_parts.push(value.to_string()),
+        }
+    }
+    text_parts.join("\n")
+}
+
+fn map_bigmodel_error(err: BigModelError) -> AgentError {
+    match err {
+        BigModelError::RateLimitError(message) => {
+            AgentError::Transient(TransientError::RateLimit {
+                message,
+                retry_after_ms: None,
+            })
+        }
+        BigModelError::NetworkError(err) => AgentError::Transient(TransientError::Network {
+            message: err.to_string(),
+            retry_after_ms: None,
+        }),
+        BigModelError::ServerError(message) => {
+            AgentError::Transient(TransientError::ServiceUnavailable {
+                message,
+                retry_after_ms: None,
+            })
+        }
+        BigModelError::InvalidRequest(message) | BigModelError::AuthenticationError(message) => {
+            AgentError::Model { message }
+        }
+        BigModelError::ParseError(err) => AgentError::Model {
+            message: err.to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agent_core::{new_id, InputEnvelope, ToolResult};
+    use bigmodel_api::{ChoiceChunk, Delta};
+
+    #[test]
+    fn convert_request_includes_system_prompt_and_streaming() {
+        let request = ModelRequest {
+            epoch: 0,
+            transcript: vec![TranscriptItem::assistant_message("previous")],
+            inputs: vec![InputEnvelope::user_text("hello")],
+        };
+        let cfg = BigModelAdapterConfig {
+            model: "glm-test".to_string(),
+            system_prompt: Some("be helpful".to_string()),
+            max_tokens: Some(512),
+            temperature: Some(0.5),
+            top_p: Some(0.9),
+        };
+
+        let converted = convert_model_request(request, &cfg);
+
+        assert_eq!(converted.model, "glm-test");
+        assert!(converted.stream);
+        assert_eq!(converted.max_tokens, Some(512));
+        assert_eq!(converted.temperature, Some(0.5));
+        assert_eq!(converted.top_p, Some(0.9));
+        assert_eq!(converted.messages.len(), 3);
+        assert!(matches!(&converted.messages[0].role, Role::System));
+        assert_eq!(message_text(&converted.messages[0]), "be helpful");
+        assert!(matches!(&converted.messages[1].role, Role::Assistant));
+        assert_eq!(message_text(&converted.messages[1]), "previous");
+        assert!(matches!(&converted.messages[2].role, Role::User));
+        assert_eq!(message_text(&converted.messages[2]), "hello");
+    }
+
+    #[test]
+    fn transcript_tool_result_maps_to_tool_message() {
+        let item = TranscriptItem::ToolResult {
+            id: new_id(),
+            epoch: 2,
+            result: ToolResult::ok("call-1", serde_json::json!({"ok": true})),
+        };
+
+        let message = transcript_item_to_message(item).expect("message");
+        assert!(matches!(message.role, Role::Tool));
+        assert_eq!(message_text(&message), "{\"ok\":true}");
+    }
+
+    #[test]
+    fn stream_chunk_emits_text_and_reasoning_deltas() {
+        let chunk = ChatResponseChunk {
+            id: "chunk-1".to_string(),
+            created: 0,
+            model: "glm-test".to_string(),
+            choices: vec![ChoiceChunk {
+                index: 0,
+                delta: Delta {
+                    role: Some("assistant".to_string()),
+                    content: Some("hello".to_string()),
+                    reasoning_content: Some("thinking".to_string()),
+                },
+                finish_reason: None,
+            }],
+        };
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        emit_chunk(chunk, &tx);
+
+        let first = rx.try_recv().expect("first event").expect("ok");
+        let second = rx.try_recv().expect("second event").expect("ok");
+
+        assert_eq!(
+            first,
+            ModelOutputEvent::ReasoningDelta {
+                delta: "thinking".to_string()
+            }
+        );
+        assert_eq!(
+            second,
+            ModelOutputEvent::TextDelta {
+                delta: "hello".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn map_errors_to_agent_error_classes() {
+        let retryable = map_bigmodel_error(BigModelError::RateLimitError("busy".to_string()));
+        assert!(matches!(retryable, AgentError::Transient(_)));
+
+        let fatal = map_bigmodel_error(BigModelError::InvalidRequest("bad".to_string()));
+        assert!(matches!(fatal, AgentError::Model { .. }));
+    }
+
+    fn message_text(message: &Message) -> &str {
+        match &message.content {
+            Content::Text(text) => text,
+            Content::Multimodal(_) => "",
+        }
+    }
+}
