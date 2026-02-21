@@ -11,12 +11,10 @@ import {
   type ChecklistItem,
 } from "@/lib/api/prompt-lab";
 import { mockInvoke } from "@/lib/mocks/prompt-lab-mock";
-import { invoke } from "@tauri-apps/api/core";
 
-// Development override - use mock
+// Override the invoke function in development
 if (process.env.NODE_ENV === "development") {
-  // @ts-expect-error - Override invoke for development
-  invoke = async (cmd: string, args?: Record<string, unknown>) => {
+  require("@tauri-apps/api/core").invoke = async (cmd: string, args?: Record<string, unknown>) => {
     return mockInvoke(cmd, args);
   };
 }
