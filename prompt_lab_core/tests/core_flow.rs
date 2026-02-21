@@ -1,8 +1,8 @@
 use argusx_common::config::Settings;
 use prompt_lab_core::{
     AiExecutionLogFilter, AppendAiExecutionLogInput, BindGoldenSetItemInput, ChecklistFilter,
-    ChecklistStatus, CreateChecklistItemInput, ExecStatus, PromptLab, SourceType, TargetLevel,
-    UpdateChecklistItemInput, UpsertCheckResultInput,
+    ChecklistStatus, CreateChecklistItemInput, ExecStatus, PromptLab, PromptLabError, SourceType,
+    TargetLevel, UpdateChecklistItemInput, UpsertCheckResultInput,
 };
 use serde_json::json;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -231,4 +231,133 @@ async fn check_run_and_log_append_roundtrip() {
 
     assert_eq!(logs.len(), 1);
     assert_eq!(logs[0].id, log.id);
+}
+
+#[tokio::test]
+async fn checklist_soft_delete_blocks_update_and_marks_deleted_timestamp() {
+    let settings = settings_for_temp();
+    let db_path = settings.database.path.clone();
+    let lab = PromptLab::new(settings).await.expect("init prompt lab");
+
+    let created = lab
+        .checklist_service()
+        .create(CreateChecklistItemInput {
+            name: "Rule D".to_string(),
+            prompt: "check".to_string(),
+            target_level: TargetLevel::Step,
+            result_schema: Some(json!({"type": "object"})),
+            version: Some(1),
+            status: ChecklistStatus::Active,
+            created_by: None,
+        })
+        .await
+        .expect("create checklist");
+
+    lab.checklist_service()
+        .soft_delete(created.id)
+        .await
+        .expect("soft delete checklist");
+
+    let listed = lab
+        .checklist_service()
+        .list(ChecklistFilter {
+            status: None,
+            target_level: None,
+        })
+        .await
+        .expect("list checklist items");
+    assert!(listed.iter().all(|item| item.id != created.id));
+
+    let update_result = lab
+        .checklist_service()
+        .update(UpdateChecklistItemInput {
+            id: created.id,
+            name: Some("Rule D+".to_string()),
+            prompt: None,
+            target_level: None,
+            result_schema: None,
+            version: None,
+            status: None,
+            updated_by: None,
+        })
+        .await;
+
+    match update_result {
+        Err(PromptLabError::NotFound { entity, id }) => {
+            assert_eq!(entity, "checklist_items");
+            assert_eq!(id, created.id);
+        }
+        other => panic!("expected NotFound for updating deleted checklist, got: {other:?}"),
+    }
+
+    let pool = sqlx::SqlitePool::connect(&format!("sqlite://{db_path}"))
+        .await
+        .expect("connect sqlite");
+    let deleted_at: Option<String> =
+        sqlx::query_scalar("SELECT deleted_at FROM checklist_items WHERE id = ?1")
+            .bind(created.id)
+            .fetch_one(&pool)
+            .await
+            .expect("query deleted_at");
+    let deleted_at = deleted_at.expect("deleted_at should be set");
+    assert!(
+        deleted_at.contains('T') && deleted_at.ends_with('Z'),
+        "expected ISO-8601 UTC timestamp, got: {deleted_at}"
+    );
+
+    let second_delete = lab.checklist_service().soft_delete(created.id).await;
+    match second_delete {
+        Err(PromptLabError::NotFound { entity, id }) => {
+            assert_eq!(entity, "checklist_items");
+            assert_eq!(id, created.id);
+        }
+        other => panic!("expected NotFound on second soft delete, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn golden_set_unbind_returns_not_found_when_relation_missing() {
+    let settings = settings_for_temp();
+    let lab = PromptLab::new(settings).await.expect("init prompt lab");
+
+    let checklist = lab
+        .checklist_service()
+        .create(CreateChecklistItemInput {
+            name: "Rule E".to_string(),
+            prompt: "check".to_string(),
+            target_level: TargetLevel::Step,
+            result_schema: Some(json!({"type": "object"})),
+            version: Some(1),
+            status: ChecklistStatus::Active,
+            created_by: None,
+        })
+        .await
+        .expect("create checklist");
+
+    let check_result = lab
+        .check_result_service()
+        .upsert(UpsertCheckResultInput {
+            id: None,
+            context_type: "sop".to_string(),
+            context_id: 303,
+            check_item_id: checklist.id,
+            source_type: SourceType::Ai,
+            operator_id: Some("system".to_string()),
+            result: Some(json!({"ok": true})),
+            is_pass: true,
+        })
+        .await
+        .expect("create check result");
+
+    let missing_unbind = lab
+        .golden_set_service()
+        .unbind(check_result.id, checklist.id)
+        .await;
+    match missing_unbind {
+        Err(PromptLabError::NotFound { entity, id }) => {
+            assert_eq!(entity, "golden_set_items");
+            assert_eq!(id, check_result.id);
+        }
+        other => panic!("expected NotFound for missing relation unbind, got: {other:?}"),
+    }
 }

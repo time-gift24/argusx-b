@@ -91,6 +91,9 @@ impl PromptLabRepository {
         &self,
         filter: ChecklistFilter,
     ) -> Result<Vec<ChecklistItem>> {
+        let status = filter.status.map(|v| v.as_str().to_string());
+        let target_level = filter.target_level.map(|v| v.as_str().to_string());
+
         let rows = sqlx::query_as::<_, ChecklistItemRow>(
             r#"
             SELECT
@@ -98,13 +101,13 @@ impl PromptLabRepository {
               created_at, updated_at, created_by, updated_by, deleted_at
             FROM checklist_items
             WHERE deleted_at IS NULL
-              AND (?1 IS NULL OR status = ?1)
-              AND (?2 IS NULL OR target_level = ?2)
+              AND status = COALESCE(?1, status)
+              AND target_level = COALESCE(?2, target_level)
             ORDER BY id DESC
             "#,
         )
-        .bind(filter.status.map(|v| v.as_str().to_string()))
-        .bind(filter.target_level.map(|v| v.as_str().to_string()))
+        .bind(status)
+        .bind(target_level)
         .fetch_all(&self.pool)
         .await?;
 
@@ -154,7 +157,7 @@ impl PromptLabRepository {
         golden_set_id: i64,
         checklist_item_id: i64,
     ) -> Result<()> {
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             DELETE FROM golden_set_items
             WHERE golden_set_id = ?1 AND checklist_item_id = ?2
@@ -164,20 +167,32 @@ impl PromptLabRepository {
         .bind(checklist_item_id)
         .execute(&self.pool)
         .await?;
+        if result.rows_affected() == 0 {
+            return Err(PromptLabError::NotFound {
+                entity: "golden_set_items",
+                id: golden_set_id,
+            });
+        }
         Ok(())
     }
 
     pub async fn soft_delete_checklist_item(&self, id: i64) -> Result<()> {
-        sqlx::query(
+        let result = sqlx::query(
             r#"
             UPDATE checklist_items
-            SET deleted_at = datetime('now')
+            SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
             WHERE id = ?1 AND deleted_at IS NULL
             "#,
         )
         .bind(id)
         .execute(&self.pool)
         .await?;
+        if result.rows_affected() == 0 {
+            return Err(PromptLabError::NotFound {
+                entity: "checklist_items",
+                id,
+            });
+        }
         Ok(())
     }
 
@@ -246,9 +261,9 @@ impl PromptLabRepository {
             SELECT id, context_type, context_id, check_item_id, source_type,
                    operator_id, result, is_pass, created_at
             FROM check_results
-            WHERE (?1 IS NULL OR context_type = ?1)
-              AND (?2 IS NULL OR context_id = ?2)
-              AND (?3 IS NULL OR check_item_id = ?3)
+            WHERE context_type = COALESCE(?1, context_type)
+              AND context_id = COALESCE(?2, context_id)
+              AND check_item_id = COALESCE(?3, check_item_id)
             ORDER BY id DESC
             "#,
         )
@@ -309,9 +324,9 @@ impl PromptLabRepository {
                    input_tokens, output_tokens, exec_status, error_message, latency_ms,
                    created_at
             FROM ai_execution_logs
-            WHERE (?1 IS NULL OR context_type = ?1)
-              AND (?2 IS NULL OR context_id = ?2)
-              AND (?3 IS NULL OR check_item_id = ?3)
+            WHERE context_type = COALESCE(?1, context_type)
+              AND context_id = COALESCE(?2, context_id)
+              AND check_item_id = COALESCE(?3, check_item_id)
             ORDER BY id DESC
             "#,
         )
