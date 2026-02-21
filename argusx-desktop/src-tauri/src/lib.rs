@@ -151,7 +151,6 @@ impl From<UpdateChecklistItemInput> for prompt_lab_core::UpdateChecklistItemInpu
 pub struct ChecklistFilter {
     pub status: Option<ChecklistStatusInput>,
     pub target_level: Option<TargetLevelInput>,
-    pub include_deleted: Option<bool>,
 }
 
 impl From<ChecklistFilter> for prompt_lab_core::ChecklistFilter {
@@ -639,18 +638,18 @@ async fn list_ai_execution_logs(
 // ============================================================================
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Get app data directory for database
             let app_dir = app.path().app_data_dir()
-                .expect("Failed to get app data directory");
+                .map_err(|e| format!("Failed to get app data directory: {}", e))?;
 
             // Create prompt_lab directory if it doesn't exist
             let db_dir = app_dir.join("prompt_lab");
             std::fs::create_dir_all(&db_dir)
-                .expect("Failed to create database directory");
+                .map_err(|e| format!("Failed to create database directory: {}", e))?;
 
             let db_path = db_dir.join("data.db");
 
@@ -658,7 +657,7 @@ pub fn run() {
             let prompt_lab = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
-                .expect("Failed to create tokio runtime")
+                .map_err(|e| format!("Failed to create tokio runtime: {}", e))?
                 .block_on(async {
                     let settings = Settings {
                         database: DatabaseConfig {
@@ -669,8 +668,8 @@ pub fn run() {
                         logging: argusx_common::config::LoggingConfig::default(),
                     };
                     PromptLab::new(settings).await
-                        .expect("Failed to initialize PromptLab")
-                });
+                        .map_err(|e| format!("Failed to initialize PromptLab: {}", e))
+                })?;
 
             app.manage(Arc::new(prompt_lab));
             Ok(())
@@ -688,6 +687,6 @@ pub fn run() {
             append_ai_execution_log,
             list_ai_execution_logs,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!())?;
+    Ok(())
 }

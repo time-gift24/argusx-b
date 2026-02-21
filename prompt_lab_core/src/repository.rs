@@ -62,7 +62,7 @@ impl PromptLabRepository {
               version = COALESCE(?6, version),
               status = COALESCE(?7, status),
               updated_by = COALESCE(?8, updated_by)
-            WHERE id = ?1
+            WHERE id = ?1 AND deleted_at IS NULL
             RETURNING
               id, name, prompt, target_level, result_schema, version, status,
               created_at, updated_at, created_by, updated_by, deleted_at
