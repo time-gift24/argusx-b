@@ -62,7 +62,9 @@ impl GoldenSetService {
     }
 
     pub async fn unbind(&self, golden_set_id: i64, checklist_item_id: i64) -> Result<()> {
-        self.repo.unbind_golden_set_item(golden_set_id, checklist_item_id).await
+        self.repo
+            .unbind_golden_set_item(golden_set_id, checklist_item_id)
+            .await
     }
 }
 
