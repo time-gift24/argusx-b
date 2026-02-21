@@ -15,10 +15,7 @@ pub enum ToolExecutionError {
 
     /// Payload type mismatch
     #[error("payload type mismatch: expected {expected}, got {actual}")]
-    PayloadMismatch {
-        expected: String,
-        actual: String,
-    },
+    PayloadMismatch { expected: String, actual: String },
 
     /// File operation error
     #[error("file error: {0}")]

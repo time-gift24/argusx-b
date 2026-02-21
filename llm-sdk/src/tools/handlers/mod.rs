@@ -4,8 +4,8 @@
 //! - read_file.rs: File reading tool
 //! - apply_patch.rs: File writing/patching tool
 
-pub mod read_file;
 pub mod apply_patch;
+pub mod read_file;
 
-pub use read_file::ReadFileHandler;
 pub use apply_patch::ApplyPatchHandler;
+pub use read_file::ReadFileHandler;

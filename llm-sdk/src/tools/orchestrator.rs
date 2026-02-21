@@ -119,7 +119,9 @@ impl ToolOrchestrator {
 
                 if !approval.approved {
                     return Err(ToolExecutionError::ApprovalDenied(
-                        approval.reason.unwrap_or_else(|| "Approval denied".to_string()),
+                        approval
+                            .reason
+                            .unwrap_or_else(|| "Approval denied".to_string()),
                     ));
                 }
             }

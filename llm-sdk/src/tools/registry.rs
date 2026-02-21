@@ -66,9 +66,9 @@ impl ToolRegistry {
         tool_name: &str,
         payload: ToolPayload,
     ) -> Result<super::context::ToolOutput, ToolExecutionError> {
-        let handler = self.get(tool_name).ok_or_else(|| {
-            ToolExecutionError::ToolNotFound(tool_name.to_string())
-        })?;
+        let handler = self
+            .get(tool_name)
+            .ok_or_else(|| ToolExecutionError::ToolNotFound(tool_name.to_string()))?;
 
         if !handler.matches_kind(&payload) {
             return Err(ToolExecutionError::PayloadMismatch {
@@ -77,21 +77,23 @@ impl ToolRegistry {
             });
         }
 
-        handler.handle(super::context::ToolInvocation {
-            session: super::context::SessionInfo::new(
-                "unknown".to_string(),
-                std::env::current_dir().unwrap_or_default(),
-            ),
-            turn: super::context::TurnContext {
-                cwd: std::env::current_dir().unwrap_or_default(),
-                turn_number: 0,
-                messages: vec![],
-            },
-            tracker: super::context::TurnDiffTracker::new(),
-            call_id: "unknown".to_string(),
-            tool_name: tool_name.to_string(),
-            payload,
-        }).await
+        handler
+            .handle(super::context::ToolInvocation {
+                session: super::context::SessionInfo::new(
+                    "unknown".to_string(),
+                    std::env::current_dir().unwrap_or_default(),
+                ),
+                turn: super::context::TurnContext {
+                    cwd: std::env::current_dir().unwrap_or_default(),
+                    turn_number: 0,
+                    messages: vec![],
+                },
+                tracker: super::context::TurnDiffTracker::new(),
+                call_id: "unknown".to_string(),
+                tool_name: tool_name.to_string(),
+                payload,
+            })
+            .await
     }
 }
 
@@ -124,7 +126,9 @@ impl ToolRegistryBuilder {
             kind: handler.kind(),
         };
 
-        self.registry.handlers.insert(name.clone(), Arc::new(handler));
+        self.registry
+            .handlers
+            .insert(name.clone(), Arc::new(handler));
         self.registry.specs.insert(name, spec);
         self
     }

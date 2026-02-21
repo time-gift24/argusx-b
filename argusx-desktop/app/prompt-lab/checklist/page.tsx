@@ -1,20 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Field, FieldLabel } from "@/components/ui/field";
 import {
   listChecklistItems,
   createChecklistItem,
@@ -26,7 +19,7 @@ import {
 export default function ChecklistPage() {
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [targetLevel, setTargetLevel] = useState<"step" | "sop">("step");
@@ -54,8 +47,8 @@ export default function ChecklistPage() {
         status: "active",
       };
       const newItem = await createChecklistItem(input);
-      setItems([...items, newItem]);
-      setOpen(false);
+      setItems([newItem, ...items]);
+      setIsCreating(false);
       setName("");
       setPrompt("");
       setTargetLevel("step");
@@ -77,63 +70,69 @@ export default function ChecklistPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Checklist Items</h1>
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Item
-            </Button>
-          </SheetTrigger>
-          <SheetContent>
-            <SheetHeader>
-              <SheetTitle>Create Checklist Item</SheetTitle>
-            </SheetHeader>
-            <div className="space-y-4 mt-4">
-              <div>
-                <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g., Check JSON syntax"
-                />
-              </div>
-              <div>
-                <Label htmlFor="prompt">Prompt</Label>
-                <Textarea
-                  id="prompt"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="e.g., Validate that the output is valid JSON"
-                  rows={3}
-                />
-              </div>
-              <div>
-                <Label htmlFor="targetLevel">Target Level</Label>
-                <select
-                  id="targetLevel"
-                  className="w-full border rounded-md px-3 py-2 bg-background"
-                  value={targetLevel}
-                  onChange={(e) => setTargetLevel(e.target.value as "step" | "sop")}
-                >
-                  <option value="step">Step</option>
-                  <option value="sop">SOP</option>
-                </select>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleCreate} disabled={submitting || !name.trim() || !prompt.trim()}>
-                  {submitting ? "Creating..." : "Create"}
-                </Button>
-              </div>
-            </div>
-          </SheetContent>
-        </Sheet>
+        {!isCreating && (
+          <Button variant="outline" onClick={() => setIsCreating(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Item
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-4">
+        {/* Create Form Card */}
+        {isCreating && (
+          <Card>
+            <CardHeader>
+              <CardTitle>New Checklist Item</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <Field>
+                  <FieldLabel>Name</FieldLabel>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g., Check JSON syntax"
+                    autoFocus
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel>Prompt</FieldLabel>
+                  <Textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder="e.g., Validate that the output is valid JSON"
+                    rows={3}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel>Target Level</FieldLabel>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 bg-background"
+                    value={targetLevel}
+                    onChange={(e) => setTargetLevel(e.target.value as "step" | "sop")}
+                  >
+                    <option value="step">Step</option>
+                    <option value="sop">SOP</option>
+                  </select>
+                </Field>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setIsCreating(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCreate}
+                    disabled={submitting || !name.trim() || !prompt.trim()}
+                  >
+                    {submitting ? "Creating..." : "Create"}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Existing Items */}
         {items.map((item) => (
           <Card key={item.id}>
             <CardHeader className="flex flex-row items-center justify-between">

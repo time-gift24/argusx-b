@@ -6,10 +6,10 @@
 use async_trait::async_trait;
 use serde::Deserialize;
 
+use crate::parse_tool_args;
 use crate::tools::context::{OutputBody, ToolInvocation, ToolOutput, ToolPayload};
 use crate::tools::error::ToolExecutionError;
 use crate::tools::handler::{ToolHandler, ToolKind};
-use crate::parse_tool_args;
 
 /// Arguments for read_file tool
 #[derive(Deserialize)]
@@ -194,8 +194,7 @@ impl ToolHandler for ReadFileHandler {
         let content = match args.mode {
             ReadMode::Slice => read_slice(&path, args.offset, args.limit).await?,
             ReadMode::Indentation => {
-                read_indentation_block(&path, args.offset, args.limit, &args.indentation)
-                    .await?
+                read_indentation_block(&path, args.offset, args.limit, &args.indentation).await?
             }
         };
 
@@ -301,7 +300,9 @@ async fn read_indentation_block(
         }
 
         line_number += 1;
-        let content = String::from_utf8_lossy(&buffer).trim_end_matches(|c| c == '\n' || c == '\r').to_string();
+        let content = String::from_utf8_lossy(&buffer)
+            .trim_end_matches(|c| c == '\n' || c == '\r')
+            .to_string();
         let indent = measure_indent(&content);
         all_lines.push((line_number, content, indent));
 
@@ -360,8 +361,8 @@ fn measure_indent(line: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write as _;
+    use tempfile::NamedTempFile;
 
     #[tokio::test]
     async fn test_read_file_basic() -> Result<(), Box<dyn std::error::Error>> {
@@ -389,7 +390,8 @@ mod tests {
                     "path": temp.path().to_string_lossy(),
                     "offset": 1,
                     "limit": 10
-                }).to_string(),
+                })
+                .to_string(),
             },
         };
 
@@ -405,8 +407,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_read_file_utf8_long_line_does_not_panic(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_read_file_utf8_long_line_does_not_panic() -> Result<(), Box<dyn std::error::Error>>
+    {
         let mut temp = NamedTempFile::new()?;
         let long_line = "你".repeat(MAX_LINE_LENGTH + 50);
         writeln!(temp, "{}", long_line)?;
@@ -430,7 +432,8 @@ mod tests {
                     "path": temp.path().to_string_lossy(),
                     "offset": 1,
                     "limit": 1
-                }).to_string(),
+                })
+                .to_string(),
             },
         };
 

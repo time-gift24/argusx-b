@@ -129,9 +129,8 @@ impl ApplyPatchHandler {
             )));
         }
 
-        std::fs::remove_file(&full_path).map_err(|e| {
-            ToolExecutionError::FileError(format!("Failed to delete file: {}", e))
-        })?;
+        std::fs::remove_file(&full_path)
+            .map_err(|e| ToolExecutionError::FileError(format!("Failed to delete file: {}", e)))?;
 
         Ok(Some(format!("Deleted: {}", full_path.display())))
     }
@@ -203,7 +202,10 @@ Use - and + for modifications with unified diff format."#
     }
 
     fn matches_kind(&self, payload: &ToolPayload) -> bool {
-        matches!(payload, ToolPayload::Function { .. } | ToolPayload::Custom { .. })
+        matches!(
+            payload,
+            ToolPayload::Function { .. } | ToolPayload::Custom { .. }
+        )
     }
 
     async fn is_mutating(&self, _invocation: &ToolInvocation) -> bool {

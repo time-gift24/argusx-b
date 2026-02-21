@@ -7,19 +7,18 @@
 // - orchestrator.rs: Approval and execution orchestration
 // - error.rs: Tool-related errors
 
-pub mod handler;
 pub mod context;
-pub mod registry;
-pub mod orchestrator;
 pub mod error;
+pub mod handler;
 pub mod handlers;
+pub mod orchestrator;
+pub mod registry;
 
-pub use handler::{ToolHandler, ToolKind};
 pub use context::{
-    ToolInvocation, ToolPayload, ToolOutput,
-    SessionInfo, TurnContext, TurnDiffTracker,
-    OutputBody, McpToolResult, McpContent,
+    McpContent, McpToolResult, OutputBody, SessionInfo, ToolInvocation, ToolOutput, ToolPayload,
+    TurnContext, TurnDiffTracker,
 };
-pub use registry::{ToolRegistry, ToolRegistryBuilder, ToolSpec};
-pub use orchestrator::{ToolOrchestrator, ApprovalGate, ApprovalResult, ApprovalRequirement};
 pub use error::{ToolError, ToolExecutionError};
+pub use handler::{ToolHandler, ToolKind};
+pub use orchestrator::{ApprovalGate, ApprovalRequirement, ApprovalResult, ToolOrchestrator};
+pub use registry::{ToolRegistry, ToolRegistryBuilder, ToolSpec};

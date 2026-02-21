@@ -8,6 +8,9 @@ pub mod runtime_impl;
 pub mod state;
 pub mod transition;
 
+#[cfg(test)]
+pub mod test_helpers;
+
 pub use adapters::bigmodel::BigModelModelAdapter;
 pub use runtime_impl::TurnRuntime;
 pub use state::TurnEngineConfig;

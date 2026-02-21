@@ -105,10 +105,7 @@ pub trait ToolHandler: Send + Sync {
     /// # Returns
     /// * `Ok(ToolOutput)` - Successful execution result
     /// * `Err(ToolExecutionError)` - Execution failed
-    async fn handle(
-        &self,
-        invocation: ToolInvocation,
-    ) -> Result<ToolOutput, ToolExecutionError>;
+    async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, ToolExecutionError>;
 
     /// Called after successful execution (optional hook)
     ///
