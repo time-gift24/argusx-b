@@ -9,6 +9,7 @@ import "../../app/globals.css";
 import { AppSidebar } from "./sidebar/app-sidebar";
 import { ChatSidebar } from "./sidebar/chat-sidebar";
 import { SidebarTrigger } from "./sidebar/sidebar-trigger";
+import { ThemeToggle } from "./theme-toggle";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -24,6 +25,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               />
             </div>
             <div className="flex items-center gap-2">
+              <ThemeToggle />
               <SidebarTrigger
                 className="-mr-1"
                 side="right"
