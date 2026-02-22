@@ -34,8 +34,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use agent_core::{
-    InputEnvelope, InputSource, RuntimeEvent, RunStreamEvent,
-    SessionMeta, ToolCall, ToolResult, TranscriptItem, Usage,
+    InputEnvelope, InputSource, RunStreamEvent, RuntimeEvent, SessionMeta, ToolCall, ToolResult,
+    TranscriptItem, Usage,
 };
 use serde_json::json;
 
@@ -290,10 +290,7 @@ impl StateBuilder {
     }
 
     /// Adds multiple transcript items
-    pub fn with_transcript(
-        mut self,
-        items: impl IntoIterator<Item = TranscriptItem>,
-    ) -> Self {
+    pub fn with_transcript(mut self, items: impl IntoIterator<Item = TranscriptItem>) -> Self {
         for item in items {
             self.transcript.push(item);
         }
@@ -495,7 +492,10 @@ impl EventBuilder {
     /// Creates a ModelCompleted event
     pub fn model_completed() -> Self {
         Self {
-            variant: EventVariant::ModelCompleted { epoch: 0, usage: None },
+            variant: EventVariant::ModelCompleted {
+                epoch: 0,
+                usage: None,
+            },
         }
     }
 
@@ -566,7 +566,10 @@ impl EventBuilder {
 
     /// Sets retry_after_ms for TransientError
     pub fn with_retry_after_ms(mut self, ms: u64) -> Self {
-        if let EventVariant::TransientError { retry_after_ms: r, .. } = &mut self.variant {
+        if let EventVariant::TransientError {
+            retry_after_ms: r, ..
+        } = &mut self.variant
+        {
             *r = Some(ms);
         }
         self
@@ -610,26 +613,19 @@ impl EventBuilder {
                 epoch,
                 call_id,
             },
-            EventVariant::ToolResultOk {
-                epoch,
-                result,
-            } => RuntimeEvent::ToolResultOk {
+            EventVariant::ToolResultOk { epoch, result } => RuntimeEvent::ToolResultOk {
                 event_id,
                 epoch,
                 result,
             },
-            EventVariant::ToolResultErr {
-                epoch,
-                result,
-            } => RuntimeEvent::ToolResultErr {
+            EventVariant::ToolResultErr { epoch, result } => RuntimeEvent::ToolResultErr {
                 event_id,
                 epoch,
                 result,
             },
-            EventVariant::InputInjected { input } => RuntimeEvent::InputInjected {
-                event_id,
-                input,
-            },
+            EventVariant::InputInjected { input } => {
+                RuntimeEvent::InputInjected { event_id, input }
+            }
             EventVariant::ModelCompleted { epoch, usage } => RuntimeEvent::ModelCompleted {
                 event_id,
                 epoch,
@@ -649,11 +645,10 @@ impl EventBuilder {
                 message,
                 retry_after_ms,
             },
-            EventVariant::FatalError { message } => RuntimeEvent::FatalError {
-                event_id,
-                message,
-            },
-            EventVariant::CancelRequested { reason } => RuntimeEvent::CancelRequested { event_id, reason },
+            EventVariant::FatalError { message } => RuntimeEvent::FatalError { event_id, message },
+            EventVariant::CancelRequested { reason } => {
+                RuntimeEvent::CancelRequested { event_id, reason }
+            }
         }
     }
 }
@@ -732,7 +727,8 @@ impl<'a> TransitionAssert<'a> {
         assert!(
             self.transition.state.output_buffer.contains(expected),
             "Expected output_buffer to contain \"{}\", got \"{}\"",
-            expected, self.transition.state.output_buffer
+            expected,
+            self.transition.state.output_buffer
         );
         self
     }
@@ -742,7 +738,11 @@ impl<'a> TransitionAssert<'a> {
         assert!(
             self.transition.state.inflight_tools.is_empty(),
             "Expected no inflight tools, got {:?}",
-            self.transition.state.inflight_tools.keys().collect::<Vec<_>>()
+            self.transition
+                .state
+                .inflight_tools
+                .keys()
+                .collect::<Vec<_>>()
         );
         self
     }
@@ -753,7 +753,11 @@ impl<'a> TransitionAssert<'a> {
             self.transition.state.inflight_tools.contains_key(call_id),
             "Expected inflight_tools to contain {}, got {:?}",
             call_id,
-            self.transition.state.inflight_tools.keys().collect::<Vec<_>>()
+            self.transition
+                .state
+                .inflight_tools
+                .keys()
+                .collect::<Vec<_>>()
         );
         self
     }
@@ -771,9 +775,11 @@ impl<'a> TransitionAssert<'a> {
     /// Asserts pending_inputs has expected count
     pub fn has_pending_inputs_count(mut self, expected: usize) -> Self {
         assert_eq!(
-            self.transition.state.pending_inputs.len(), expected,
+            self.transition.state.pending_inputs.len(),
+            expected,
             "Expected {} pending inputs, got {}",
-            expected, self.transition.state.pending_inputs.len()
+            expected,
+            self.transition.state.pending_inputs.len()
         );
         self
     }
@@ -801,9 +807,11 @@ impl<'a> TransitionAssert<'a> {
     /// Asserts transcript has expected number of items
     pub fn has_transcript_count(mut self, expected: usize) -> Self {
         assert_eq!(
-            self.transition.state.transcript.len(), expected,
+            self.transition.state.transcript.len(),
+            expected,
             "Expected transcript len {}, got {}",
-            expected, self.transition.state.transcript.len()
+            expected,
+            self.transition.state.transcript.len()
         );
         self
     }
@@ -845,16 +853,10 @@ impl<'a> TransitionAssert<'a> {
 
     /// Asserts run_events contains a specific RunStreamEvent variant
     #[allow(dead_code)]
-    pub fn emits_run_event_matching(
-        mut self,
-        f: impl Fn(&RunStreamEvent) -> bool,
-    ) -> Self {
+    pub fn emits_run_event_matching(mut self, f: impl Fn(&RunStreamEvent) -> bool) -> Self {
         let has_event = self.transition.run_events.iter().any(f);
 
-        assert!(
-            has_event,
-            "Expected run_events to match predicate"
-        );
+        assert!(has_event, "Expected run_events to match predicate");
         self
     }
 

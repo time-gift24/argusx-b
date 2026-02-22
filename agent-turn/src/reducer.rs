@@ -389,7 +389,9 @@ mod tests {
 
             let events = vec![
                 EventBuilder::turn_started("t1", user_input("hi")).build(),
-                EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+                EventBuilder::model_text_delta("hello")
+                    .with_epoch(0)
+                    .build(),
                 EventBuilder::model_completed()
                     .with_epoch(0)
                     .with_usage(Usage {
@@ -587,10 +589,10 @@ mod tests {
 #[cfg(test)]
 mod single_event_tests {
     use super::*;
-    use agent_core::{RunStreamEvent, ToolCallStatus, UiThreadEvent};
     use crate::effect::Effect;
     use crate::state::{Lifecycle, ModelState};
     use crate::test_helpers::*;
+    use agent_core::{RunStreamEvent, ToolCallStatus, UiThreadEvent};
 
     // -------------------------------------------------------------------------
     // TurnStarted Tests
@@ -681,7 +683,9 @@ mod single_event_tests {
 
         let result = reduce(
             state,
-            EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+            EventBuilder::model_text_delta("hello")
+                .with_epoch(0)
+                .build(),
             &test_config(),
         );
 
@@ -709,7 +713,9 @@ mod single_event_tests {
 
         let result = reduce(
             state,
-            EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+            EventBuilder::model_text_delta("hello")
+                .with_epoch(0)
+                .build(),
             &test_config(),
         );
 
@@ -732,7 +738,9 @@ mod single_event_tests {
 
         let result = reduce(
             state,
-            EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+            EventBuilder::model_text_delta("hello")
+                .with_epoch(0)
+                .build(),
             &test_config(),
         );
 
@@ -865,7 +873,9 @@ mod single_event_tests {
 
         let result = reduce(
             state,
-            EventBuilder::tool_dispatched("unknown").with_epoch(0).build(),
+            EventBuilder::tool_dispatched("unknown")
+                .with_epoch(0)
+                .build(),
             &test_config(),
         );
 
@@ -1323,7 +1333,9 @@ mod single_event_tests {
             .build();
 
         let events = vec![
-            EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+            EventBuilder::model_text_delta("hello")
+                .with_epoch(0)
+                .build(),
             EventBuilder::tool_result_ok("c1", serde_json::json!("result")).build(),
             EventBuilder::input_injected(user_input("test")).build(),
         ];
@@ -1349,7 +1361,9 @@ mod single_event_tests {
 
         let result = reduce(
             state,
-            EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+            EventBuilder::model_text_delta("hello")
+                .with_epoch(0)
+                .build(),
             &test_config(),
         );
 
@@ -1368,9 +1382,7 @@ mod single_event_tests {
     ///   - State unchanged (event was already processed)
     #[test]
     fn duplicate_event_id_ignored() {
-        let state = StateBuilder::new("s1", "t1")
-            .with_seen_event("e1")
-            .build();
+        let state = StateBuilder::new("s1", "t1").with_seen_event("e1").build();
 
         let result = reduce(
             state,
@@ -1431,7 +1443,11 @@ mod sequence_tests {
         // When: Execute event sequence
         let final_state = ScenarioRunner::new(state, &cfg)
             .push(EventBuilder::turn_started("t1", user_input("hi")).build())
-            .push(EventBuilder::model_text_delta("hello").with_epoch(0).build())
+            .push(
+                EventBuilder::model_text_delta("hello")
+                    .with_epoch(0)
+                    .build(),
+            )
             .push(EventBuilder::model_completed().with_epoch(0).build())
             .run()
             .into_state();
@@ -1466,15 +1482,21 @@ mod sequence_tests {
 
         let result = ScenarioRunner::new(state, &cfg)
             .push(EventBuilder::turn_started("t1", user_input("use echo")).build())
-            .push(EventBuilder::model_tool_call("c1", "echo", serde_json::json!({}))
-                .with_epoch(0)
-                .build())
+            .push(
+                EventBuilder::model_tool_call("c1", "echo", serde_json::json!({}))
+                    .with_epoch(0)
+                    .build(),
+            )
             .push(EventBuilder::tool_dispatched("c1").with_epoch(0).build())
             // Model completes while tool is still running
             .push(EventBuilder::model_completed().with_epoch(0).build())
             // Tool result comes back, model restarts because model_state==Completed
             .push(EventBuilder::tool_result_ok("c1", serde_json::json!("tool result")).build())
-            .push(EventBuilder::model_text_delta("result").with_epoch(1).build())
+            .push(
+                EventBuilder::model_text_delta("result")
+                    .with_epoch(1)
+                    .build(),
+            )
             .push(EventBuilder::model_completed().with_epoch(1).build())
             .run();
 
@@ -1503,16 +1525,47 @@ mod sequence_tests {
         let cfg = test_config();
 
         // Step 1-2: Start and add 3 tool calls
-        let state = reduce(state, EventBuilder::turn_started("t1", user_input("run all")).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_tool_call("c1", "tool1", serde_json::json!({})).with_epoch(0).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_tool_call("c2", "tool2", serde_json::json!({})).with_epoch(0).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_tool_call("c3", "tool3", serde_json::json!({})).with_epoch(0).build(), &cfg).state;
+        let state = reduce(
+            state,
+            EventBuilder::turn_started("t1", user_input("run all")).build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_tool_call("c1", "tool1", serde_json::json!({}))
+                .with_epoch(0)
+                .build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_tool_call("c2", "tool2", serde_json::json!({}))
+                .with_epoch(0)
+                .build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_tool_call("c3", "tool3", serde_json::json!({}))
+                .with_epoch(0)
+                .build(),
+            &cfg,
+        )
+        .state;
 
         // Then: All 3 tools in flight
         assert_eq!(state.inflight_tools.len(), 3);
 
         // Step 3: Model completes (should NOT finish - tools still running)
-        let state = reduce(state, EventBuilder::model_completed().with_epoch(0).build(), &cfg).state;
+        let state = reduce(
+            state,
+            EventBuilder::model_completed().with_epoch(0).build(),
+            &cfg,
+        )
+        .state;
 
         // Then: Model restarted because tools are still inflight, wait for tools
         // Note: Model completes but turn doesn't finalize because inflight_tools is not empty
@@ -1520,9 +1573,24 @@ mod sequence_tests {
         assert!(!state.done_emitted);
 
         // Step 4: Tool results come in
-        let state = reduce(state, EventBuilder::tool_result_ok("c1", serde_json::json!("r1")).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::tool_result_ok("c2", serde_json::json!("r2")).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::tool_result_ok("c3", serde_json::json!("r3")).build(), &cfg).state;
+        let state = reduce(
+            state,
+            EventBuilder::tool_result_ok("c1", serde_json::json!("r1")).build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::tool_result_ok("c2", serde_json::json!("r2")).build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::tool_result_ok("c3", serde_json::json!("r3")).build(),
+            &cfg,
+        )
+        .state;
 
         // Then: All tools complete, model should restart
         assert_eq!(state.epoch, 1);
@@ -1550,21 +1618,55 @@ mod sequence_tests {
         let state = StateBuilder::new("s1", "t1").build();
         let cfg = test_config();
 
-        let state = reduce(state, EventBuilder::turn_started("t1", user_input("test")).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_text_delta("hello").with_epoch(0).build(), &cfg).state;
+        let state = reduce(
+            state,
+            EventBuilder::turn_started("t1", user_input("test")).build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_text_delta("hello")
+                .with_epoch(0)
+                .build(),
+            &cfg,
+        )
+        .state;
 
         // Transient error
-        let backoff = reduce(state, EventBuilder::transient_error("timeout").with_epoch(0).build(), &cfg);
+        let backoff = reduce(
+            state,
+            EventBuilder::transient_error("timeout")
+                .with_epoch(0)
+                .build(),
+            &cfg,
+        );
         assert_eq!(backoff.state.lifecycle, Lifecycle::Backoff);
 
         // Retry timer fires
-        let retry = reduce(backoff.state, EventBuilder::retry_timer_fired(1).build(), &cfg);
+        let retry = reduce(
+            backoff.state,
+            EventBuilder::retry_timer_fired(1).build(),
+            &cfg,
+        );
         assert_eq!(retry.state.epoch, 1);
         assert_eq!(retry.state.lifecycle, Lifecycle::Active);
 
         // Continue conversation
-        let state = reduce(retry.state, EventBuilder::model_text_delta("world").with_epoch(1).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_completed().with_epoch(1).build(), &cfg).state;
+        let state = reduce(
+            retry.state,
+            EventBuilder::model_text_delta("world")
+                .with_epoch(1)
+                .build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_completed().with_epoch(1).build(),
+            &cfg,
+        )
+        .state;
 
         // Then: Completed successfully after retry
         assert_eq!(state.lifecycle, Lifecycle::Done);
@@ -1584,8 +1686,20 @@ mod sequence_tests {
         let state = StateBuilder::new("s1", "t1").build();
         let cfg = test_config();
 
-        let state = reduce(state, EventBuilder::turn_started("t1", user_input("test")).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_tool_call("c1", "echo", serde_json::json!({})).with_epoch(0).build(), &cfg).state;
+        let state = reduce(
+            state,
+            EventBuilder::turn_started("t1", user_input("test")).build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_tool_call("c1", "echo", serde_json::json!({}))
+                .with_epoch(0)
+                .build(),
+            &cfg,
+        )
+        .state;
 
         // Cancel
         let result = reduce(state, EventBuilder::cancel_requested().build(), &cfg);
@@ -1594,7 +1708,10 @@ mod sequence_tests {
         assert_eq!(result.state.lifecycle, Lifecycle::Failed);
 
         // Then: Cancel effect triggered
-        assert!(result.effects.iter().any(|e| matches!(e, Effect::CancelInflightTools)));
+        assert!(result
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::CancelInflightTools)));
     }
 
     /// Test: Tool failure and recovery
@@ -1614,19 +1731,58 @@ mod sequence_tests {
         let state = StateBuilder::new("s1", "t1").build();
         let cfg = test_config();
 
-        let state = reduce(state, EventBuilder::turn_started("t1", user_input("use tool")).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_tool_call("c1", "failing_tool", serde_json::json!({})).with_epoch(0).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::tool_result_err("c1", "tool failed").build(), &cfg).state;
+        let state = reduce(
+            state,
+            EventBuilder::turn_started("t1", user_input("use tool")).build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_tool_call("c1", "failing_tool", serde_json::json!({}))
+                .with_epoch(0)
+                .build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::tool_result_err("c1", "tool failed").build(),
+            &cfg,
+        )
+        .state;
         // After tool result, there's pending input (the tool result), so model restarts
-        let state = reduce(state, EventBuilder::model_text_delta("error occurred").with_epoch(0).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_completed().with_epoch(0).build(), &cfg).state;
+        let state = reduce(
+            state,
+            EventBuilder::model_text_delta("error occurred")
+                .with_epoch(0)
+                .build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_completed().with_epoch(0).build(),
+            &cfg,
+        )
+        .state;
 
         // Now epoch=1, model restarted because there was pending input
         assert_eq!(state.epoch, 1);
 
         // Complete the restarted model
-        let state = reduce(state, EventBuilder::model_text_delta("done").with_epoch(1).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_completed().with_epoch(1).build(), &cfg).state;
+        let state = reduce(
+            state,
+            EventBuilder::model_text_delta("done").with_epoch(1).build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_completed().with_epoch(1).build(),
+            &cfg,
+        )
+        .state;
 
         // Then: Turn completed despite tool error
         assert_eq!(state.lifecycle, Lifecycle::Done);
@@ -1653,17 +1809,44 @@ mod sequence_tests {
         let state = StateBuilder::new("s1", "t1").build();
         let cfg = test_config();
 
-        let state = reduce(state, EventBuilder::turn_started("t1", user_input("first")).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::input_injected(user_input("second")).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_completed().with_epoch(0).build(), &cfg).state;
+        let state = reduce(
+            state,
+            EventBuilder::turn_started("t1", user_input("first")).build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::input_injected(user_input("second")).build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_completed().with_epoch(0).build(),
+            &cfg,
+        )
+        .state;
 
         // Then: Model restarted with new input
         assert_eq!(state.epoch, 1);
         assert_eq!(state.model_state, ModelState::Streaming);
 
         // Continue
-        let state = reduce(state, EventBuilder::model_text_delta("response").with_epoch(1).build(), &cfg).state;
-        let state = reduce(state, EventBuilder::model_completed().with_epoch(1).build(), &cfg).state;
+        let state = reduce(
+            state,
+            EventBuilder::model_text_delta("response")
+                .with_epoch(1)
+                .build(),
+            &cfg,
+        )
+        .state;
+        let state = reduce(
+            state,
+            EventBuilder::model_completed().with_epoch(1).build(),
+            &cfg,
+        )
+        .state;
 
         // Then: Completed
         assert_eq!(state.lifecycle, Lifecycle::Done);

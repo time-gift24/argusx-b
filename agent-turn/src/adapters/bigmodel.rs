@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 use agent_core::{
     AgentError, InputEnvelope, InputPart, InputSource, LanguageModel, ModelEventStream,
-    ModelOutputEvent, ModelRequest, NoteLevel, ToolCall, TranscriptItem, TransientError,
+    ModelOutputEvent, ModelRequest, NoteLevel, ToolCall, TranscriptItem, TransientError, Usage,
 };
 use async_trait::async_trait;
 use bigmodel_api::{
     BigModelClient, BigModelError, ChatRequest, ChatResponseChunk, Content, Message, Role,
+    Usage as BigModelUsage,
 };
 use futures::StreamExt;
 use tokio::sync::mpsc;
@@ -65,9 +66,13 @@ impl LanguageModel for BigModelModelAdapter {
 
         tokio::spawn(async move {
             let mut stream = client.chat_stream(request);
+            let mut usage: Option<Usage> = None;
             while let Some(item) = stream.next().await {
                 match item {
-                    Ok(chunk) => emit_chunk(chunk, &tx),
+                    Ok(chunk) => {
+                        usage = extract_usage_from_chunk(&chunk).or(usage);
+                        emit_chunk(chunk, &tx);
+                    }
                     Err(err) => {
                         let _ = tx.send(Err(map_bigmodel_error(err)));
                         return;
@@ -75,7 +80,7 @@ impl LanguageModel for BigModelModelAdapter {
                 }
             }
 
-            let _ = tx.send(Ok(ModelOutputEvent::Completed { usage: None }));
+            let _ = tx.send(Ok(ModelOutputEvent::Completed { usage }));
         });
 
         Ok(Box::pin(UnboundedReceiverStream::new(rx)))
@@ -99,6 +104,22 @@ fn emit_chunk(
             }
         }
     }
+}
+
+fn extract_usage_from_chunk(chunk: &ChatResponseChunk) -> Option<Usage> {
+    chunk.usage.as_ref().map(bigmodel_usage_to_usage)
+}
+
+fn bigmodel_usage_to_usage(usage: &BigModelUsage) -> Usage {
+    Usage {
+        input_tokens: non_negative_u64(usage.prompt_tokens),
+        output_tokens: non_negative_u64(usage.completion_tokens),
+        total_tokens: non_negative_u64(usage.total_tokens),
+    }
+}
+
+fn non_negative_u64(value: i32) -> u64 {
+    u64::try_from(value).unwrap_or_default()
 }
 
 fn convert_model_request(request: ModelRequest, cfg: &BigModelAdapterConfig) -> ChatRequest {
@@ -281,6 +302,7 @@ mod tests {
                 },
                 finish_reason: None,
             }],
+            usage: None,
         };
 
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -310,6 +332,31 @@ mod tests {
 
         let fatal = map_bigmodel_error(BigModelError::InvalidRequest("bad".to_string()));
         assert!(matches!(fatal, AgentError::Model { .. }));
+    }
+
+    #[test]
+    fn extract_usage_from_chunk_maps_token_stats() {
+        let chunk = ChatResponseChunk {
+            id: "chunk-usage".to_string(),
+            created: 0,
+            model: "glm-test".to_string(),
+            choices: vec![],
+            usage: Some(bigmodel_api::Usage {
+                prompt_tokens: 12,
+                completion_tokens: 34,
+                total_tokens: 46,
+            }),
+        };
+
+        let usage = extract_usage_from_chunk(&chunk).expect("usage");
+        assert_eq!(
+            usage,
+            Usage {
+                input_tokens: 12,
+                output_tokens: 34,
+                total_tokens: 46,
+            }
+        );
     }
 
     fn message_text(message: &Message) -> &str {

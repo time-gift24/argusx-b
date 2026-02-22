@@ -173,6 +173,8 @@ pub struct ChatResponseChunk {
     pub created: i64,
     pub model: String,
     pub choices: Vec<ChoiceChunk>,
+    #[serde(default)]
+    pub usage: Option<Usage>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
