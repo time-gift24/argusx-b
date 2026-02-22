@@ -368,16 +368,17 @@ fn backoff_ms(config: &TurnEngineConfig, attempt: u32) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use agent_core::{InputEnvelope, RuntimeEvent, SessionMeta, ToolCall, Usage};
+    use agent_core::{RuntimeEvent, Usage};
 
     use super::*;
+    use crate::test_helpers::*;
 
     fn base_state() -> TurnState {
-        TurnState::new(SessionMeta::new("s1", "t1"))
+        StateBuilder::new("s1", "t1").build()
     }
 
     fn cfg() -> TurnEngineConfig {
-        TurnEngineConfig::default()
+        test_config()
     }
 
     #[test]
@@ -387,25 +388,16 @@ mod tests {
             let mut runs = Vec::new();
 
             let events = vec![
-                RuntimeEvent::TurnStarted {
-                    event_id: "e1".into(),
-                    turn_id: "t1".into(),
-                    input: InputEnvelope::user_text("hi"),
-                },
-                RuntimeEvent::ModelTextDelta {
-                    event_id: "e2".into(),
-                    epoch: 0,
-                    delta: "hello".into(),
-                },
-                RuntimeEvent::ModelCompleted {
-                    event_id: "e3".into(),
-                    epoch: 0,
-                    usage: Some(Usage {
+                EventBuilder::turn_started("t1", user_input("hi")).build(),
+                EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+                EventBuilder::model_completed()
+                    .with_epoch(0)
+                    .with_usage(Usage {
                         input_tokens: 1,
                         output_tokens: 1,
                         total_tokens: 2,
-                    }),
-                },
+                    })
+                    .build(),
             ];
 
             for ev in events {
@@ -428,41 +420,30 @@ mod tests {
 
     #[test]
     fn completed_does_not_finish_when_tool_inflight() {
-        let mut state = base_state();
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .build();
 
-        state = reduce(
+        let state = reduce(
             state,
-            RuntimeEvent::TurnStarted {
-                event_id: "e1".into(),
-                turn_id: "t1".into(),
-                input: InputEnvelope::user_text("hi"),
-            },
+            EventBuilder::turn_started("t1", user_input("hi")).build(),
             &cfg(),
         )
         .state;
 
-        state = reduce(
+        let state = reduce(
             state,
-            RuntimeEvent::ModelToolCall {
-                event_id: "e2".into(),
-                epoch: 0,
-                call: ToolCall {
-                    call_id: "c1".into(),
-                    tool_name: "echo".into(),
-                    arguments: serde_json::json!({}),
-                },
-            },
+            EventBuilder::model_tool_call("c1", "echo", serde_json::json!({}))
+                .with_epoch(0)
+                .build(),
             &cfg(),
         )
         .state;
 
-        state = reduce(
+        let state = reduce(
             state,
-            RuntimeEvent::ModelCompleted {
-                event_id: "e3".into(),
-                epoch: 0,
-                usage: None,
-            },
+            EventBuilder::model_completed().with_epoch(0).build(),
             &cfg(),
         )
         .state;
@@ -473,36 +454,25 @@ mod tests {
 
     #[test]
     fn live_injection_after_completed_restarts_model() {
-        let mut state = base_state();
+        let state = base_state();
 
-        state = reduce(
+        let state = reduce(
             state,
-            RuntimeEvent::TurnStarted {
-                event_id: "e1".into(),
-                turn_id: "t1".into(),
-                input: InputEnvelope::user_text("first"),
-            },
+            EventBuilder::turn_started("t1", user_input("first")).build(),
             &cfg(),
         )
         .state;
 
-        state = reduce(
+        let state = reduce(
             state,
-            RuntimeEvent::InputInjected {
-                event_id: "e2".into(),
-                input: InputEnvelope::user_text("second"),
-            },
+            EventBuilder::input_injected(user_input("second")).build(),
             &cfg(),
         )
         .state;
 
         let tr = reduce(
             state,
-            RuntimeEvent::ModelCompleted {
-                event_id: "e3".into(),
-                epoch: 0,
-                usage: None,
-            },
+            EventBuilder::model_completed().with_epoch(0).build(),
             &cfg(),
         );
 
@@ -516,26 +486,20 @@ mod tests {
 
     #[test]
     fn transient_error_schedules_retry_and_bumps_epoch() {
-        let mut state = base_state();
-        state = reduce(
+        let state = base_state();
+        let state = reduce(
             state,
-            RuntimeEvent::TurnStarted {
-                event_id: "e1".into(),
-                turn_id: "t1".into(),
-                input: InputEnvelope::user_text("hi"),
-            },
+            EventBuilder::turn_started("t1", user_input("hi")).build(),
             &cfg(),
         )
         .state;
 
         let backoff = reduce(
             state,
-            RuntimeEvent::TransientError {
-                event_id: "e2".into(),
-                epoch: 0,
-                message: "timeout".into(),
-                retry_after_ms: Some(1),
-            },
+            EventBuilder::transient_error("timeout")
+                .with_epoch(0)
+                .with_retry_after_ms(1)
+                .build(),
             &cfg(),
         );
 
@@ -564,36 +528,24 @@ mod tests {
 
     #[test]
     fn turn_done_is_emitted_once() {
-        let mut state = base_state();
-        state = reduce(
+        let state = base_state();
+        let state = reduce(
             state,
-            RuntimeEvent::TurnStarted {
-                event_id: "e1".into(),
-                turn_id: "t1".into(),
-                input: InputEnvelope::user_text("hi"),
-            },
+            EventBuilder::turn_started("t1", user_input("hi")).build(),
             &cfg(),
         )
         .state;
 
-        state = reduce(
+        let state = reduce(
             state,
-            RuntimeEvent::ModelTextDelta {
-                event_id: "e2".into(),
-                epoch: 0,
-                delta: "done".into(),
-            },
+            EventBuilder::model_text_delta("done").with_epoch(0).build(),
             &cfg(),
         )
         .state;
 
         let first = reduce(
             state,
-            RuntimeEvent::ModelCompleted {
-                event_id: "e3".into(),
-                epoch: 0,
-                usage: None,
-            },
+            EventBuilder::model_completed().with_epoch(0).build(),
             &cfg(),
         );
 
@@ -604,11 +556,7 @@ mod tests {
 
         let second = reduce(
             first.state,
-            RuntimeEvent::ModelCompleted {
-                event_id: "e4".into(),
-                epoch: 0,
-                usage: None,
-            },
+            EventBuilder::model_completed().with_epoch(0).build(),
             &cfg(),
         );
 
@@ -616,5 +564,1106 @@ mod tests {
             .run_events
             .iter()
             .any(|e| matches!(e, RunStreamEvent::TurnDone { .. })));
+    }
+}
+
+// =============================================================================
+// Level 1: Single Event Tests
+// =============================================================================
+//
+// This module tests each event type in isolation, verifying:
+// - Guard conditions (when event should be processed vs ignored)
+// - State mutations (what fields change)
+// - Output events (RunStreamEvent, UiThreadEvent)
+// - Effects (side effects triggered)
+//
+// ## Test Structure
+//
+// Each test follows the Given-When-Then pattern:
+// - **Given**: Initial state setup
+// - **When**: Event is dispatched
+// - **Then**: Expected state changes and outputs
+
+mod single_event_tests {
+    use super::*;
+    use agent_core::{RunStreamEvent, ToolCallStatus, UiThreadEvent};
+    use crate::effect::Effect;
+    use crate::state::{Lifecycle, ModelState};
+    use crate::test_helpers::*;
+
+    // -------------------------------------------------------------------------
+    // TurnStarted Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: TurnStarted - Normal start
+    ///
+    /// Given: Initial state with lifecycle=Active, model_state=NotStarted
+    /// When:  TurnStarted event with matching turn_id
+    /// Then:
+    ///   - lifecycle stays Active
+    ///   - model_state becomes Streaming
+    ///   - pending_inputs has 1 item
+    ///   - transcript has 1 item (UserMessage)
+    ///   - emits TurnStart run event
+    ///   - emits StartModel effect
+    #[test]
+    fn turn_started_normal_start() {
+        let state = StateBuilder::new("s1", "t1").build();
+
+        let result = reduce(
+            state,
+            EventBuilder::turn_started("t1", user_input("hello")).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.lifecycle, Lifecycle::Active);
+        assert_eq!(result.state.model_state, ModelState::Streaming);
+        // Note: pending_inputs is drained by start_model_from_pending
+        assert_eq!(result.state.pending_inputs.len(), 0);
+        assert_eq!(result.state.transcript.len(), 1);
+
+        assert!(result
+            .run_events
+            .iter()
+            .any(|e| matches!(e, RunStreamEvent::TurnStart { .. })));
+
+        assert!(result
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::StartModel { .. })));
+    }
+
+    /// Test: TurnStarted - Mismatched turn_id is ignored
+    ///
+    /// Given: Initial state with turn_id="t1"
+    /// When:  TurnStarted event with turn_id="t2" (different)
+    /// Then:
+    ///   - State unchanged
+    ///   - emits ProtocolWarning
+    #[test]
+    fn turn_started_mismatched_turn_id() {
+        let state = StateBuilder::new("s1", "t1").build();
+
+        let result = reduce(
+            state,
+            EventBuilder::turn_started("t2", user_input("hello")).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.lifecycle, Lifecycle::Active);
+        assert_eq!(result.state.model_state, ModelState::NotStarted);
+        assert!(result.state.pending_inputs.is_empty());
+
+        assert!(result
+            .run_events
+            .iter()
+            .any(|e| matches!(e, RunStreamEvent::ProtocolWarning { .. })));
+    }
+
+    // -------------------------------------------------------------------------
+    // ModelTextDelta Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: ModelTextDelta - Normal text append
+    ///
+    /// Given: State with lifecycle=Active, model_state=Streaming, epoch=0
+    /// When:  ModelTextDelta{epoch=0, delta="hello"}
+    /// Then:
+    ///   - output_buffer = "hello"
+    ///   - emits MessageDelta UI event
+    #[test]
+    fn model_text_delta_normal_append() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.output_buffer, "hello");
+
+        assert!(result
+            .ui_events
+            .iter()
+            .any(|e| matches!(e, UiThreadEvent::MessageDelta { .. })));
+    }
+
+    /// Test: ModelTextDelta - Guard fails in non-Streaming state
+    ///
+    /// Given: State with model_state=NotStarted
+    /// When:  ModelTextDelta{epoch=0, delta="hello"}
+    /// Then:
+    ///   - output_buffer unchanged
+    ///   - No UI events emitted
+    #[test]
+    fn model_text_delta_ignored_in_not_started() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::NotStarted)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+            &test_config(),
+        );
+
+        assert!(result.state.output_buffer.is_empty());
+    }
+
+    /// Test: ModelTextDelta - Guard fails with wrong epoch
+    ///
+    /// Given: State with epoch=1
+    /// When:  ModelTextDelta{epoch=0, delta="hello"}
+    /// Then:
+    ///   - output_buffer unchanged (epoch mismatch)
+    #[test]
+    fn model_text_delta_ignored_wrong_epoch() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .with_epoch(1)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+            &test_config(),
+        );
+
+        assert!(result.state.output_buffer.is_empty());
+    }
+
+    // -------------------------------------------------------------------------
+    // ModelToolCall Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: ModelToolCall - Normal tool call
+    ///
+    /// Given: Active streaming state
+    /// When:  ModelToolCall{call_id="c1", name="echo", args={}}
+    /// Then:
+    ///   - inflight_tools has c1
+    ///   - transcript has ToolCall item
+    ///   - emits ToolExecutionPlanned
+    ///   - emits ExecuteTool effect
+    #[test]
+    fn model_tool_call_normal() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::model_tool_call("c1", "echo", serde_json::json!({}))
+                .with_epoch(0)
+                .build(),
+            &test_config(),
+        );
+
+        assert!(result.state.inflight_tools.contains_key("c1"));
+
+        assert!(result.state.transcript.len() >= 1);
+
+        assert!(result
+            .run_events
+            .iter()
+            .any(|e| matches!(e, RunStreamEvent::ToolExecutionPlanned { .. })));
+
+        assert!(result
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::ExecuteTool { .. })));
+    }
+
+    /// Test: ModelToolCall - Duplicate call_id is ignored
+    ///
+    /// Given: State with inflight_tools containing call_id="c1"
+    /// When:  ModelToolCall with call_id="c1" (duplicate)
+    /// Then:
+    ///   - State unchanged (no duplicate added)
+    ///   - emits ProtocolWarning
+    #[test]
+    fn model_tool_call_duplicate_id() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .with_inflight_tool("c1", tool_call("c1", "echo", serde_json::json!({})))
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::model_tool_call("c1", "echo", serde_json::json!({}))
+                .with_epoch(0)
+                .build(),
+            &test_config(),
+        );
+
+        assert!(result
+            .run_events
+            .iter()
+            .any(|e| matches!(e, RunStreamEvent::ProtocolWarning { .. })));
+    }
+
+    // -------------------------------------------------------------------------
+    // ToolDispatched Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: ToolDispatched - Normal dispatch notification
+    ///
+    /// Given: State with inflight_tools containing call_id="c1"
+    /// When:  ToolDispatched{call_id="c1"}
+    /// Then:
+    ///   - emits ToolExecutionStart
+    ///   - emits ToolCallProgress (Running)
+    #[test]
+    fn tool_dispatched_normal() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .with_inflight_tool("c1", tool_call("c1", "echo", serde_json::json!({})))
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::tool_dispatched("c1").with_epoch(0).build(),
+            &test_config(),
+        );
+
+        assert!(result
+            .run_events
+            .iter()
+            .any(|e| matches!(e, RunStreamEvent::ToolExecutionStart { .. })));
+
+        assert!(result.ui_events.iter().any(|e| matches!(
+            e,
+            UiThreadEvent::ToolCallProgress {
+                status: ToolCallStatus::Running,
+                ..
+            }
+        )));
+    }
+
+    /// Test: ToolDispatched - Unknown call_id is ignored
+    ///
+    /// Given: State with no inflight tools
+    /// When:  ToolDispatched{call_id="unknown"}
+    /// Then:
+    ///   - No events emitted
+    #[test]
+    fn tool_dispatched_unknown_call_id() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::tool_dispatched("unknown").with_epoch(0).build(),
+            &test_config(),
+        );
+
+        assert!(result.run_events.is_empty());
+    }
+
+    // -------------------------------------------------------------------------
+    // ToolResultOk Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: ToolResultOk - Normal result processing
+    ///
+    /// Given: State with inflight_tools containing call_id="c1"
+    /// When:  ToolResultOk{call_id="c1", result="ok"}
+    /// Then:
+    ///   - inflight_tools removes c1
+    ///   - pending_inputs has 1 item (tool result as input)
+    ///   - emits ToolExecutionDone
+    ///   - emits ToolCallCompleted UI event
+    #[test]
+    fn tool_result_ok_normal() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .with_inflight_tool("c1", tool_call("c1", "echo", serde_json::json!({})))
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::tool_result_ok("c1", serde_json::json!("result")).build(),
+            &test_config(),
+        );
+
+        assert!(!result.state.inflight_tools.contains_key("c1"));
+
+        assert!(!result.state.pending_inputs.is_empty());
+
+        assert!(result
+            .run_events
+            .iter()
+            .any(|e| matches!(e, RunStreamEvent::ToolExecutionDone { .. })));
+    }
+
+    /// Test: ToolResultOk - Unknown call_id is ignored
+    ///
+    /// Given: State with no inflight tools
+    /// When:  ToolResultOk for unknown call_id
+    /// Then:
+    ///   - State unchanged
+    #[test]
+    fn tool_result_ok_unknown_call_id() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::tool_result_ok("unknown", serde_json::json!("result")).build(),
+            &test_config(),
+        );
+
+        assert!(result.state.inflight_tools.is_empty());
+    }
+
+    // -------------------------------------------------------------------------
+    // InputInjected Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: InputInjected - Normal input injection
+    ///
+    /// Given: Active state
+    /// When:  InputInjected with user input
+    /// Then:
+    ///   - pending_inputs has 1 item
+    ///   - transcript has UserMessage
+    ///   - emits InputInjected run event
+    #[test]
+    fn input_injected_normal() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::input_injected(user_input("injected")).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.pending_inputs.len(), 1);
+
+        assert!(result.state.transcript.len() >= 1);
+
+        assert!(result
+            .run_events
+            .iter()
+            .any(|e| matches!(e, RunStreamEvent::InputInjected { .. })));
+    }
+
+    /// Test: InputInjected - Restarts model when completed and no inflight tools
+    ///
+    /// Given: State with model_state=Completed, inflight_tools empty
+    /// When:  InputInjected
+    /// Then:
+    ///   - epoch becomes 1
+    ///   - model_state becomes Streaming
+    ///   - emits StartModel effect with epoch=1
+    #[test]
+    fn input_injected_restarts_model_when_completed() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Completed)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::input_injected(user_input("injected")).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.epoch, 1);
+        assert_eq!(result.state.model_state, ModelState::Streaming);
+
+        assert!(result
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::StartModel { epoch: 1, .. })));
+    }
+
+    // -------------------------------------------------------------------------
+    // ModelCompleted Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: ModelCompleted - Normal completion
+    ///
+    /// Given: Active streaming state, no inflight tools
+    /// When:  ModelCompleted
+    /// Then:
+    ///   - model_state = Completed
+    ///   - emits ModelCompleted run event
+    #[test]
+    fn model_completed_normal() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::model_completed().with_epoch(0).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.model_state, ModelState::Completed);
+
+        assert!(result
+            .run_events
+            .iter()
+            .any(|e| matches!(e, RunStreamEvent::ModelCompleted { .. })));
+    }
+
+    /// Test: ModelCompleted - Restarts if pending inputs and no inflight tools
+    ///
+    /// Given: State with pending_inputs, no inflight tools
+    /// When:  ModelCompleted
+    /// Then:
+    ///   - model_state = Streaming
+    ///   - epoch becomes 1
+    ///   - emits StartModel effect
+    #[test]
+    fn model_completed_restarts_with_pending_inputs() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .with_pending_input(user_input("pending"))
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::model_completed().with_epoch(0).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.epoch, 1);
+        assert_eq!(result.state.model_state, ModelState::Streaming);
+
+        assert!(result
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::StartModel { epoch: 1, .. })));
+    }
+
+    /// Test: ModelCompleted - Guard fails with wrong epoch
+    ///
+    /// Given: State with epoch=1
+    /// When:  ModelCompleted{epoch=0}
+    /// Then:
+    ///   - model_state unchanged
+    #[test]
+    fn model_completed_ignored_wrong_epoch() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .with_epoch(1)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::model_completed().with_epoch(0).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.model_state, ModelState::Streaming);
+    }
+
+    // -------------------------------------------------------------------------
+    // RetryTimerFired Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: RetryTimerFired - Normal retry
+    ///
+    /// Given: State with lifecycle=Backoff
+    /// When:  RetryTimerFired{next_epoch=1}
+    /// Then:
+    ///   - lifecycle = Active
+    ///   - model_state = Streaming
+    ///   - epoch = 1
+    ///   - emits StartModel effect
+    #[test]
+    fn retry_timer_fired_normal() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Backoff)
+            .with_model_state(ModelState::Error)
+            .with_last_request_inputs(vec![user_input("test")])
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::retry_timer_fired(1).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.lifecycle, Lifecycle::Active);
+        assert_eq!(result.state.model_state, ModelState::Streaming);
+        assert_eq!(result.state.epoch, 1);
+
+        assert!(result
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::StartModel { epoch: 1, .. })));
+    }
+
+    /// Test: RetryTimerFired - Guard fails if not Backoff
+    ///
+    /// Given: State with lifecycle=Active
+    /// When:  RetryTimerFired
+    /// Then:
+    ///   - State unchanged
+    #[test]
+    fn retry_timer_fired_ignored_when_active() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::retry_timer_fired(1).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.lifecycle, Lifecycle::Active);
+    }
+
+    // -------------------------------------------------------------------------
+    // TransientError Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: TransientError - Normal retry scheduling
+    ///
+    /// Given: Active state with retry budget available
+    /// When:  TransientError{message="timeout"}
+    /// Then:
+    ///   - lifecycle = Backoff
+    ///   - model_state = Error
+    ///   - retry_attempt = 1
+    ///   - emits ScheduleRetry effect
+    #[test]
+    fn transient_error_schedules_retry() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::transient_error("timeout")
+                .with_epoch(0)
+                .build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.lifecycle, Lifecycle::Backoff);
+        assert_eq!(result.state.model_state, ModelState::Error);
+        assert_eq!(result.state.retry_attempt, 1);
+
+        assert!(result
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::ScheduleRetry { .. })));
+    }
+
+    /// Test: TransientError - Max retries exceeded fails the turn
+    ///
+    /// Given: State with retry_attempt >= max_retries
+    /// When:  TransientError
+    /// Then:
+    ///   - lifecycle = Failed
+    ///   - emits TurnFailed
+    #[test]
+    fn transient_error_fails_when_exhausted() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .with_retry_attempt(3)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::transient_error("timeout")
+                .with_epoch(0)
+                .build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.lifecycle, Lifecycle::Failed);
+
+        assert!(result
+            .run_events
+            .iter()
+            .any(|e| matches!(e, RunStreamEvent::TurnFailed { .. })));
+    }
+
+    /// Test: TransientError - Ignored if epoch mismatch
+    ///
+    /// Given: State with epoch=1
+    /// When:  TransientError{epoch=0}
+    /// Then:
+    ///   - State unchanged
+    #[test]
+    fn transient_error_ignored_wrong_epoch() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .with_epoch(1)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::transient_error("timeout")
+                .with_epoch(0)
+                .build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.lifecycle, Lifecycle::Active);
+    }
+
+    // -------------------------------------------------------------------------
+    // FatalError Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: FatalError - Always fails the turn
+    ///
+    /// Given: Any state (Active, Backoff, etc.)
+    /// When:  FatalError{message="something went wrong"}
+    /// Then:
+    ///   - lifecycle = Failed
+    ///   - model_state = Error
+    ///   - emits TurnFailed
+    #[test]
+    fn fatal_error_always_fails() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::fatal_error("something went wrong").build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.lifecycle, Lifecycle::Failed);
+        assert_eq!(result.state.model_state, ModelState::Error);
+
+        assert!(result
+            .run_events
+            .iter()
+            .any(|e| matches!(e, RunStreamEvent::TurnFailed { .. })));
+    }
+
+    // -------------------------------------------------------------------------
+    // CancelRequested Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: CancelRequested - Always fails the turn
+    ///
+    /// Given: Active state
+    /// When:  CancelRequested
+    /// Then:
+    ///   - lifecycle = Failed
+    ///   - emits TurnFailed
+    ///   - emits CancelInflightTools effect
+    #[test]
+    fn cancel_requested_fails_turn() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Active)
+            .with_model_state(ModelState::Streaming)
+            .with_inflight_tool("c1", tool_call("c1", "echo", serde_json::json!({})))
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::cancel_requested().build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.lifecycle, Lifecycle::Failed);
+
+        assert!(result
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::CancelInflightTools)));
+    }
+
+    // -------------------------------------------------------------------------
+    // Terminal State Protection Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: Done state ignores all events
+    ///
+    /// Given: State with lifecycle=Done
+    /// When:  Any event (ModelTextDelta, ToolResultOk, etc.)
+    /// Then:
+    ///   - State unchanged
+    ///   - No events emitted
+    #[test]
+    fn done_state_ignores_events() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Done)
+            .with_model_state(ModelState::Completed)
+            .with_done_emitted(true)
+            .build();
+
+        let events = vec![
+            EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+            EventBuilder::tool_result_ok("c1", serde_json::json!("result")).build(),
+            EventBuilder::input_injected(user_input("test")).build(),
+        ];
+
+        for event in events {
+            let result = reduce(state.clone(), event, &test_config());
+            assert_eq!(result.state.lifecycle, Lifecycle::Done);
+        }
+    }
+
+    /// Test: Failed state ignores all events
+    ///
+    /// Given: State with lifecycle=Failed
+    /// When:  Any event
+    /// Then:
+    ///   - State unchanged
+    #[test]
+    fn failed_state_ignores_events() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_lifecycle(Lifecycle::Failed)
+            .with_model_state(ModelState::Error)
+            .build();
+
+        let result = reduce(
+            state,
+            EventBuilder::model_text_delta("hello").with_epoch(0).build(),
+            &test_config(),
+        );
+
+        assert_eq!(result.state.lifecycle, Lifecycle::Failed);
+    }
+
+    // -------------------------------------------------------------------------
+    // Idempotency Tests
+    // -------------------------------------------------------------------------
+
+    /// Test: Duplicate event IDs are ignored
+    ///
+    /// Given: State with seen_event_ids containing "e1"
+    /// When:  Event with event_id="e1"
+    /// Then:
+    ///   - State unchanged (event was already processed)
+    #[test]
+    fn duplicate_event_id_ignored() {
+        let state = StateBuilder::new("s1", "t1")
+            .with_seen_event("e1")
+            .build();
+
+        let result = reduce(
+            state,
+            RuntimeEvent::ModelTextDelta {
+                event_id: "e1".into(),
+                epoch: 0,
+                delta: "hello".into(),
+            },
+            &test_config(),
+        );
+
+        assert!(result.state.output_buffer.is_empty());
+    }
+}
+
+// =============================================================================
+// Level 2: Event Sequence Tests
+// =============================================================================
+//
+// This module tests sequences of events to verify correct state transitions
+// across multiple steps.
+//
+// ## Test Structure
+//
+// Each test follows the Given-When-Then pattern:
+// - **Given**: Initial state setup
+// - **When**: Event sequence [E1, E2, E3, ...]
+// - **Then**: Expected intermediate and final states
+
+mod sequence_tests {
+    use super::*;
+    use crate::effect::Effect;
+    use crate::state::{Lifecycle, ModelState};
+    use crate::test_helpers::*;
+
+    // -------------------------------------------------------------------------
+    // Simple Conversation Flow
+    // -------------------------------------------------------------------------
+
+    /// Test: Simple text-only conversation flow
+    ///
+    /// Sequence:
+    ///   1. TurnStarted -> Starts model, enqueues input
+    ///   2. ModelTextDelta "hello" -> Appends to output
+    ///   3. ModelCompleted -> Model finishes, turn completes
+    ///
+    /// Expected Final State:
+    ///   - lifecycle = Done
+    ///   - output_buffer = "hello"
+    ///   - done_emitted = true
+    #[test]
+    fn sequence_simple_text_conversation() {
+        // Given: Initial state
+        let state = StateBuilder::new("s1", "t1").build();
+        let cfg = test_config();
+
+        // When: Execute event sequence
+        let final_state = ScenarioRunner::new(state, &cfg)
+            .push(EventBuilder::turn_started("t1", user_input("hi")).build())
+            .push(EventBuilder::model_text_delta("hello").with_epoch(0).build())
+            .push(EventBuilder::model_completed().with_epoch(0).build())
+            .run()
+            .into_state();
+
+        // Then: Final state
+        assert_eq!(final_state.lifecycle, Lifecycle::Done);
+        assert_eq!(final_state.output_buffer, "hello");
+        assert!(final_state.done_emitted);
+    }
+
+    // -------------------------------------------------------------------------
+    // Tool Call Flow
+    // -------------------------------------------------------------------------
+
+    /// Test: Tool call and result flow
+    ///
+    /// Sequence:
+    ///   1. TurnStarted -> Starts model
+    ///   2. ModelToolCall{c1} -> Tool call added to inflight
+    ///   3. ToolDispatched{c1} -> Tool execution started
+    ///   4. ToolResultOk{c1} -> Tool result received, model restarted
+    ///   5. ModelTextDelta "result" -> Final text
+    ///   6. ModelCompleted -> Turn completes
+    ///
+    /// Expected:
+    ///   - Model restarts after tool result (epoch=1)
+    ///   - Final state = Done
+    #[test]
+    fn sequence_tool_call_complete_flow() {
+        let state = StateBuilder::new("s1", "t1").build();
+        let cfg = test_config();
+
+        let result = ScenarioRunner::new(state, &cfg)
+            .push(EventBuilder::turn_started("t1", user_input("use echo")).build())
+            .push(EventBuilder::model_tool_call("c1", "echo", serde_json::json!({}))
+                .with_epoch(0)
+                .build())
+            .push(EventBuilder::tool_dispatched("c1").with_epoch(0).build())
+            // Model completes while tool is still running
+            .push(EventBuilder::model_completed().with_epoch(0).build())
+            // Tool result comes back, model restarts because model_state==Completed
+            .push(EventBuilder::tool_result_ok("c1", serde_json::json!("tool result")).build())
+            .push(EventBuilder::model_text_delta("result").with_epoch(1).build())
+            .push(EventBuilder::model_completed().with_epoch(1).build())
+            .run();
+
+        // Then: Model restarted after tool result (because model had completed)
+        assert_eq!(result.state().epoch, 1);
+
+        // Then: Final state is Done
+        assert_eq!(result.state().lifecycle, Lifecycle::Done);
+    }
+
+    /// Test: Multiple tools in parallel
+    ///
+    /// Sequence:
+    ///   1. TurnStarted
+    ///   2. ModelToolCall{c1}, ModelToolCall{c2}, ModelToolCall{c3} (parallel)
+    ///   3. ModelCompleted (model finishes before tools)
+    ///   4. ToolResultOk for each tool (in any order)
+    ///   5. Model restarts after all tools complete
+    ///
+    /// Expected:
+    ///   - Turn doesn't finish while tools are inflight
+    ///   - Model restarts after all tools done
+    #[test]
+    fn sequence_multiple_tools_parallel() {
+        let state = StateBuilder::new("s1", "t1").build();
+        let cfg = test_config();
+
+        // Step 1-2: Start and add 3 tool calls
+        let state = reduce(state, EventBuilder::turn_started("t1", user_input("run all")).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_tool_call("c1", "tool1", serde_json::json!({})).with_epoch(0).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_tool_call("c2", "tool2", serde_json::json!({})).with_epoch(0).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_tool_call("c3", "tool3", serde_json::json!({})).with_epoch(0).build(), &cfg).state;
+
+        // Then: All 3 tools in flight
+        assert_eq!(state.inflight_tools.len(), 3);
+
+        // Step 3: Model completes (should NOT finish - tools still running)
+        let state = reduce(state, EventBuilder::model_completed().with_epoch(0).build(), &cfg).state;
+
+        // Then: Model restarted because tools are still inflight, wait for tools
+        // Note: Model completes but turn doesn't finalize because inflight_tools is not empty
+        assert_eq!(state.model_state, ModelState::Completed);
+        assert!(!state.done_emitted);
+
+        // Step 4: Tool results come in
+        let state = reduce(state, EventBuilder::tool_result_ok("c1", serde_json::json!("r1")).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::tool_result_ok("c2", serde_json::json!("r2")).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::tool_result_ok("c3", serde_json::json!("r3")).build(), &cfg).state;
+
+        // Then: All tools complete, model should restart
+        assert_eq!(state.epoch, 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Error and Retry Flow
+    // -------------------------------------------------------------------------
+
+    /// Test: Transient error and retry flow
+    ///
+    /// Sequence:
+    ///   1. TurnStarted
+    ///   2. ModelTextDelta "hello"
+    ///   3. TransientError -> Enters backoff
+    ///   4. RetryTimerFired -> Retries with epoch+1
+    ///   5. ModelTextDelta "world"
+    ///   6. ModelCompleted -> Turn completes
+    ///
+    /// Expected:
+    ///   - Retry increments epoch
+    ///   - Final state = Done
+    #[test]
+    fn sequence_transient_error_retry() {
+        let state = StateBuilder::new("s1", "t1").build();
+        let cfg = test_config();
+
+        let state = reduce(state, EventBuilder::turn_started("t1", user_input("test")).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_text_delta("hello").with_epoch(0).build(), &cfg).state;
+
+        // Transient error
+        let backoff = reduce(state, EventBuilder::transient_error("timeout").with_epoch(0).build(), &cfg);
+        assert_eq!(backoff.state.lifecycle, Lifecycle::Backoff);
+
+        // Retry timer fires
+        let retry = reduce(backoff.state, EventBuilder::retry_timer_fired(1).build(), &cfg);
+        assert_eq!(retry.state.epoch, 1);
+        assert_eq!(retry.state.lifecycle, Lifecycle::Active);
+
+        // Continue conversation
+        let state = reduce(retry.state, EventBuilder::model_text_delta("world").with_epoch(1).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_completed().with_epoch(1).build(), &cfg).state;
+
+        // Then: Completed successfully after retry
+        assert_eq!(state.lifecycle, Lifecycle::Done);
+    }
+
+    /// Test: Cancel requested during conversation
+    ///
+    /// Sequence:
+    ///   1. TurnStarted
+    ///   2. ModelToolCall{c1}
+    ///   3. CancelRequested -> Turn fails
+    ///
+    /// Expected:
+    ///   - lifecycle = Failed
+    #[test]
+    fn sequence_cancel_during_tool_call() {
+        let state = StateBuilder::new("s1", "t1").build();
+        let cfg = test_config();
+
+        let state = reduce(state, EventBuilder::turn_started("t1", user_input("test")).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_tool_call("c1", "echo", serde_json::json!({})).with_epoch(0).build(), &cfg).state;
+
+        // Cancel
+        let result = reduce(state, EventBuilder::cancel_requested().build(), &cfg);
+
+        // Then: Turn failed
+        assert_eq!(result.state.lifecycle, Lifecycle::Failed);
+
+        // Then: Cancel effect triggered
+        assert!(result.effects.iter().any(|e| matches!(e, Effect::CancelInflightTools)));
+    }
+
+    /// Test: Tool failure and recovery
+    ///
+    /// Sequence:
+    ///   1. TurnStarted
+    ///   2. ModelToolCall{c1}
+    ///   3. ToolResultErr{c1} -> Tool failed
+    ///   4. ModelTextDelta "error occurred"
+    ///   5. ModelCompleted -> Turn completes despite tool error
+    ///
+    /// Expected:
+    ///   - Tool error doesn't fail the turn
+    ///   - Turn completes normally
+    #[test]
+    fn sequence_tool_failure_recovery() {
+        let state = StateBuilder::new("s1", "t1").build();
+        let cfg = test_config();
+
+        let state = reduce(state, EventBuilder::turn_started("t1", user_input("use tool")).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_tool_call("c1", "failing_tool", serde_json::json!({})).with_epoch(0).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::tool_result_err("c1", "tool failed").build(), &cfg).state;
+        // After tool result, there's pending input (the tool result), so model restarts
+        let state = reduce(state, EventBuilder::model_text_delta("error occurred").with_epoch(0).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_completed().with_epoch(0).build(), &cfg).state;
+
+        // Now epoch=1, model restarted because there was pending input
+        assert_eq!(state.epoch, 1);
+
+        // Complete the restarted model
+        let state = reduce(state, EventBuilder::model_text_delta("done").with_epoch(1).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_completed().with_epoch(1).build(), &cfg).state;
+
+        // Then: Turn completed despite tool error
+        assert_eq!(state.lifecycle, Lifecycle::Done);
+    }
+
+    // -------------------------------------------------------------------------
+    // Input Injection Flow
+    // -------------------------------------------------------------------------
+
+    /// Test: Input injection during model completion
+    ///
+    /// Sequence:
+    ///   1. TurnStarted{input="first"}
+    ///   2. InputInjected{input="second"}
+    ///   3. ModelCompleted -> Triggers restart with new input
+    ///   4. ModelTextDelta "response"
+    ///   5. ModelCompleted -> Turn completes
+    ///
+    /// Expected:
+    ///   - epoch = 1 after restart
+    ///   - Final state = Done
+    #[test]
+    fn sequence_input_injection_during_completion() {
+        let state = StateBuilder::new("s1", "t1").build();
+        let cfg = test_config();
+
+        let state = reduce(state, EventBuilder::turn_started("t1", user_input("first")).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::input_injected(user_input("second")).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_completed().with_epoch(0).build(), &cfg).state;
+
+        // Then: Model restarted with new input
+        assert_eq!(state.epoch, 1);
+        assert_eq!(state.model_state, ModelState::Streaming);
+
+        // Continue
+        let state = reduce(state, EventBuilder::model_text_delta("response").with_epoch(1).build(), &cfg).state;
+        let state = reduce(state, EventBuilder::model_completed().with_epoch(1).build(), &cfg).state;
+
+        // Then: Completed
+        assert_eq!(state.lifecycle, Lifecycle::Done);
     }
 }

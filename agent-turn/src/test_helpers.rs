@@ -459,29 +459,28 @@ impl EventBuilder {
     pub fn tool_dispatched(call_id: impl Into<String>) -> Self {
         Self {
             variant: EventVariant::ToolDispatched {
+                epoch: 0,
                 call_id: call_id.into(),
             },
         }
     }
 
     /// Creates a ToolResultOk event
-    pub fn tool_result_ok(call_id: impl Into<String>, result: serde_json::Value) -> Self {
+    pub fn tool_result_ok(call_id: impl Into<String>, output: serde_json::Value) -> Self {
         Self {
             variant: EventVariant::ToolResultOk {
                 epoch: 0,
-                call_id: call_id.into(),
-                result,
+                result: ToolResult::ok(call_id, output),
             },
         }
     }
 
     /// Creates a ToolResultErr event
-    pub fn tool_result_err(call_id: impl Into<String>, error: impl Into<String>) -> Self {
+    pub fn tool_result_err(call_id: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             variant: EventVariant::ToolResultErr {
                 epoch: 0,
-                call_id: call_id.into(),
-                error: error.into(),
+                result: ToolResult::err(call_id, message),
             },
         }
     }
@@ -530,7 +529,7 @@ impl EventBuilder {
     /// Creates a CancelRequested event
     pub fn cancel_requested() -> Self {
         Self {
-            variant: EventVariant::CancelRequested,
+            variant: EventVariant::CancelRequested { reason: None },
         }
     }
 
@@ -606,29 +605,26 @@ impl EventBuilder {
                 epoch,
                 call,
             },
-            EventVariant::ToolDispatched { call_id } => RuntimeEvent::ToolDispatched {
+            EventVariant::ToolDispatched { epoch, call_id } => RuntimeEvent::ToolDispatched {
                 event_id,
+                epoch,
                 call_id,
             },
             EventVariant::ToolResultOk {
                 epoch,
-                call_id,
                 result,
             } => RuntimeEvent::ToolResultOk {
                 event_id,
                 epoch,
-                call_id,
                 result,
             },
             EventVariant::ToolResultErr {
                 epoch,
-                call_id,
-                error,
+                result,
             } => RuntimeEvent::ToolResultErr {
                 event_id,
                 epoch,
-                call_id,
-                error,
+                result,
             },
             EventVariant::InputInjected { input } => RuntimeEvent::InputInjected {
                 event_id,
@@ -657,7 +653,7 @@ impl EventBuilder {
                 event_id,
                 message,
             },
-            EventVariant::CancelRequested => RuntimeEvent::CancelRequested { event_id },
+            EventVariant::CancelRequested { reason } => RuntimeEvent::CancelRequested { event_id, reason },
         }
     }
 }
@@ -812,18 +808,17 @@ impl<'a> TransitionAssert<'a> {
         self
     }
 
-    /// Asserts run_events contains an event of the given type
-    pub fn emits_run_event<T: 'static>(self) -> Self {
+    /// Asserts run_events contains a TurnDone event
+    pub fn emits_turn_done(self) -> Self {
         let has_event = self
             .transition
             .run_events
             .iter()
-            .any(|e| e.is::<T>());
+            .any(|e| matches!(e, RunStreamEvent::TurnDone { .. }));
 
         assert!(
             has_event,
-            "Expected run_events to contain {:?}, got {:?}",
-            std::any::type_name::<T>(),
+            "Expected run_events to contain TurnDone, got {:?}",
             self.transition
                 .run_events
                 .iter()
@@ -833,18 +828,17 @@ impl<'a> TransitionAssert<'a> {
         self
     }
 
-    /// Asserts run_events does NOT contain an event of the given type
-    pub fn does_not_emit_run_event<T: 'static>(self) -> Self {
+    /// Asserts run_events does NOT contain a TurnDone event
+    pub fn does_not_emit_turn_done(self) -> Self {
         let has_event = self
             .transition
             .run_events
             .iter()
-            .any(|e| e.is::<T>());
+            .any(|e| matches!(e, RunStreamEvent::TurnDone { .. }));
 
         assert!(
             !has_event,
-            "Expected run_events NOT to contain {:?}, but it does",
-            std::any::type_name::<T>()
+            "Expected run_events NOT to contain TurnDone, but it does"
         );
         self
     }
@@ -871,19 +865,6 @@ impl<'a> TransitionAssert<'a> {
         // If they are added in the future, this can be implemented
         let _ = self;
         unimplemented!("UI events not yet implemented in Transition");
-    }
-
-    /// Asserts effects contains an effect of the given type
-    #[allow(dead_code)]
-    pub fn has_effect<T: 'static>(self) -> Self {
-        let has_effect = self.transition.effects.iter().any(|e| e.is::<T>());
-
-        assert!(
-            has_effect,
-            "Expected effects to contain {:?}",
-            std::any::type_name::<T>()
-        );
-        self
     }
 
     /// Asserts effects contains a StartModel effect with expected epoch
@@ -963,7 +944,7 @@ pub struct ScenarioRunner {
     state: TurnState,
     config: TurnEngineConfig,
     run_events: Vec<RunStreamEvent>,
-    ui_events: Vec<agent_core::UIStreamEvent>,
+    ui_events: Vec<agent_core::UiThreadEvent>,
     effects: Vec<crate::effect::Effect>,
 }
 
@@ -1021,7 +1002,7 @@ impl ScenarioRunner {
     }
 
     /// Returns all collected ui events
-    pub fn ui_events(&self) -> &[agent_core::UIStreamEvent] {
+    pub fn ui_events(&self) -> &[agent_core::UiThreadEvent] {
         &self.ui_events
     }
 
@@ -1108,9 +1089,9 @@ mod tests {
         let event = EventBuilder::tool_result_ok("c1", json!("result")).build();
 
         match event {
-            RuntimeEvent::ToolResultOk { call_id, result, .. } => {
-                assert_eq!(call_id, "c1");
-                assert_eq!(result, json!("result"));
+            RuntimeEvent::ToolResultOk { result, .. } => {
+                assert_eq!(result.call_id, "c1");
+                assert_eq!(result.output, json!("result"));
             }
             _ => panic!("Expected ToolResultOk event"),
         }
