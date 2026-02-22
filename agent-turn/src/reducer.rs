@@ -584,6 +584,7 @@ mod tests {
 // - **When**: Event is dispatched
 // - **Then**: Expected state changes and outputs
 
+#[cfg(test)]
 mod single_event_tests {
     use super::*;
     use agent_core::{RunStreamEvent, ToolCallStatus, UiThreadEvent};
@@ -1399,6 +1400,7 @@ mod single_event_tests {
 // - **When**: Event sequence [E1, E2, E3, ...]
 // - **Then**: Expected intermediate and final states
 
+#[cfg(test)]
 mod sequence_tests {
     use super::*;
     use crate::effect::Effect;
